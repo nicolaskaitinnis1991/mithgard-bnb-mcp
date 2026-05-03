@@ -15,6 +15,9 @@ export default tseslint.config(
     rules: {
       '@typescript-eslint/consistent-type-imports': 'error',
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+      // Allow `type` aliases for object shapes — tagged unions (Result<T,E>, McpError)
+      // read cleaner as type-aliases than as interfaces when used in unions.
+      '@typescript-eslint/consistent-type-definitions': 'off',
     },
   },
   {
