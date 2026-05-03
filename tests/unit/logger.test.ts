@@ -11,6 +11,7 @@ describe('createLogger', () => {
       HTTP_RATE_PER_HOUR: 1,
       HTTP_USER_AGENT: 'test',
       CACHE_MAX_SEARCH: 1,
+      CACHE_MAX_LISTING: 1,
     });
     expect(typeof log.info).toBe('function');
     expect(log.level).toBe('info');

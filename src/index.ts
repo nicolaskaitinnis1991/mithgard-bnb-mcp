@@ -5,7 +5,7 @@ import { buildServer } from './server.js';
 import { allTools, type AppDeps } from './tools/index.js';
 import { createHttpClient } from './lib/http.js';
 import { createCache } from './lib/cache.js';
-import { parseSearchResults } from './parsers/airbnb-public.js';
+import { parseSearchResults, parseListingDetails } from './parsers/airbnb-public.js';
 
 const main = async () => {
   const env = loadEnv();
@@ -19,6 +19,10 @@ const main = async () => {
   const searchCache = createCache<object>({
     max: env.CACHE_MAX_SEARCH,
     ttlMs: env.CACHE_TTL_SEARCH_MS,
+  });
+  const listingCache = createCache<object>({
+    max: env.CACHE_MAX_LISTING,
+    ttlMs: env.CACHE_TTL_LISTING_MS,
   });
 
   const deps: AppDeps = {
@@ -41,6 +45,16 @@ const main = async () => {
           ...(q.min_price !== undefined ? { min_price: q.min_price } : {}),
           ...(q.max_price !== undefined ? { max_price: q.max_price } : {}),
         }),
+    },
+    listing: {
+      http,
+      cache: {
+        get: (k) => listingCache.get(k),
+        set: (k, v) => {
+          if (typeof v === 'object' && v !== null) listingCache.set(k, v);
+        },
+      },
+      parse: (html, listingId) => parseListingDetails(html, listingId),
     },
   };
 

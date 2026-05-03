@@ -13,6 +13,7 @@ const EnvSchema = z.object({
       'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     ),
   CACHE_MAX_SEARCH: z.coerce.number().int().positive().default(500),
+  CACHE_MAX_LISTING: z.coerce.number().int().positive().default(500),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
