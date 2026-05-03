@@ -1,3 +1,4 @@
+import type { Logger } from 'pino';
 import type { ListingDetailsInputT } from './schema.js';
 import { type Result, ok } from '../../lib/result.js';
 import type { McpError } from '../../lib/errors.js';
@@ -7,6 +8,7 @@ export interface ListingDeps {
   http: { get: (url: string) => Promise<Result<string, McpError>> };
   cache: { get: (k: string) => unknown; set: (k: string, v: unknown) => void };
   parse: (html: string, listingId: string) => Result<ListingDetailsParsed, McpError>;
+  log?: Logger;
 }
 
 const buildUrl = (listingId: string): string => `https://www.airbnb.com/rooms/${listingId}`;
@@ -17,6 +19,7 @@ export const listingHandler =
     const listingId = String(input.listing_id);
     const url = buildUrl(listingId);
     const cached = deps.cache.get(url);
+    deps.log?.info({ tool: 'airbnb_listing_details', cache_hit: !!cached }, 'tool.cache');
     if (cached !== undefined && cached !== null) return ok(cached);
 
     const resp = await deps.http.get(url);

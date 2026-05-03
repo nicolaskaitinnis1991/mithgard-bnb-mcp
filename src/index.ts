@@ -55,6 +55,7 @@ const main = async () => {
         },
       },
       parse: (html, listingId) => parseListingDetails(html, listingId),
+      log,
     },
   };
 
