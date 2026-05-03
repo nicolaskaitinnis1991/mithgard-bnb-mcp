@@ -1,10 +1,9 @@
 import type { ToolDefinition } from './registry.js';
-// imports werden hier hinzugefügt, sobald Tools existieren
-// import { airbnbSearchTool } from './search/tool.js';
-// ...
+import { buildSearchTool } from './search/tool.js';
+import type { SearchDeps } from './search/handler.js';
 
-export const allTools = (): ToolDefinition[] => [
-  // airbnbSearchTool,
-  // airbnbListingDetailsTool,
-  // hostInsightsTool, ...
-];
+export interface AppDeps {
+  search: SearchDeps;
+}
+
+export const allTools = (deps: AppDeps): ToolDefinition[] => [buildSearchTool(deps.search)];

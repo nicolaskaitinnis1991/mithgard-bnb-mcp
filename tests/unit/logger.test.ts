@@ -9,6 +9,8 @@ describe('createLogger', () => {
       CACHE_TTL_LISTING_MS: 1,
       HTTP_RATE_PER_SEC: 1,
       HTTP_RATE_PER_HOUR: 1,
+      HTTP_USER_AGENT: 'test',
+      CACHE_MAX_SEARCH: 1,
     });
     expect(typeof log.info).toBe('function');
     expect(log.level).toBe('info');
