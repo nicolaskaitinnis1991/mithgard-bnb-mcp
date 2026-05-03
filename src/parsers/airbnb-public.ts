@@ -1,7 +1,24 @@
 import * as cheerio from 'cheerio';
 import { type Result, ok, err } from '../lib/result.js';
 import { type McpError, parseFailed } from '../lib/errors.js';
-import type { Listing, NormalizedQuery } from '../types/airbnb.js';
+import type {
+  Listing,
+  ListingFull,
+  ReviewsSummary,
+  HostSummary,
+  NormalizedQuery,
+} from '../types/airbnb.js';
+
+export interface ListingDetailsParsed {
+  listing: ListingFull;
+  reviews_summary: ReviewsSummary;
+  host_summary: HostSummary;
+}
+
+export const parseListingDetails = (
+  _html: string,
+  _listingId: string,
+): Result<ListingDetailsParsed, McpError> => err(parseFailed('parseListingDetails', 'listing'));
 
 export const parseSearchResults = (
   html: string,
