@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="dark" />
+    <title>Mithgard BnB MCP — host-side Airbnb tools for AI agents</title>
+    <meta
+      name="description"
+      content="Open-source MCP server that gives AI agents host-side access to Airbnb data: search, listing details, host insights, smart pricing, calendar optimization, and more. Audit-ready. Written by a Superhost, for hosts."
+    />
+    <meta property="og:title" content="Mithgard BnB MCP" />
+    <meta
+      property="og:description"
+      content="The host-side Airbnb MCP server that doesn't exist yet. Open source. Audit-ready. Written by a Superhost, for hosts."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://bnb.mithgard.ai" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%E2%9A%92%3C/text%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="container header-row">
+        <a class="brand" href="/" aria-label="Mithgard BnB MCP home">
+          <span class="brand-mark">⚒</span>
+          <span class="brand-text">
+            <span class="brand-parent">mithgard</span><span class="brand-dot">.</span><span class="brand-child">bnb</span>
+          </span>
+        </a>
+        <nav class="header-nav" aria-label="Primary">
+          <a href="#install">Install</a>
+          <a href="#tools">Tools</a>
+          <a href="#why">Why</a>
+          <a href="https://github.com/nicolaskaitinnis1991/mithgard-bnb-mcp" rel="noopener" target="_blank">GitHub</a>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="container hero-grid">
+          <div class="hero-copy">
+            <p class="eyebrow">Mithgard BnB MCP · v0.1.0-alpha</p>
+            <h1>The host-side Airbnb MCP server <em>that didn't exist yet.</em></h1>
+            <p class="lede">
+              Open source. Audit-ready. Written by a Superhost, for hosts.
+              Nine tools that let any MCP-aware agent — Claude, Cursor, custom rigs — read public
+              Airbnb data and reason about a host's calendar, pricing, messaging, and turnover.
+            </p>
+            <div class="badges">
+              <span class="badge badge-status">Live · 2 tools on public data</span>
+              <span class="badge badge-demo">Demo · 7 tools awaiting Partner API</span>
+              <span class="badge badge-tests">81 tests passing</span>
+              <span class="badge badge-license">MIT</span>
+            </div>
+            <div class="cta-row">
+              <a class="btn btn-primary" href="#install">Quick install</a>
+              <a class="btn btn-ghost" href="https://github.com/nicolaskaitinnis1991/mithgard-bnb-mcp" rel="noopener" target="_blank">Read the source ↗</a>
+            </div>
+          </div>
+          <aside class="hero-card" aria-label="What is MCP">
+            <h2 class="card-title">What's MCP?</h2>
+            <p>
+              The <strong>Model Context Protocol</strong> is Anthropic's open standard for letting
+              AI agents call structured tools. An MCP server exposes tools (with schemas + handlers);
+              any MCP client (Claude Desktop, Claude Code, Cursor, Cline, custom apps) can use them.
+            </p>
+            <p>
+              This server is the <strong>host-side</strong> bridge between agents and Airbnb. It treats
+              the host as the user — not the guest, not Airbnb itself.
+            </p>
+          </aside>
+        </div>
+      </section>
+
+      <section id="install" class="install">
+        <div class="container">
+          <h2>Quick install</h2>
+          <p class="section-lede">Three steps. No accounts. Public data tools work out of the box.</p>
+          <ol class="install-steps">
+            <li>
+              <span class="step-num">1</span>
+              <div>
+                <p class="step-title">Clone &amp; build</p>
+                <pre><code>git clone https://github.com/nicolaskaitinnis1991/mithgard-bnb-mcp
+cd mithgard-bnb-mcp
+npm ci &amp;&amp; npm run build</code></pre>
+              </div>
+            </li>
+            <li>
+              <span class="step-num">2</span>
+              <div>
+                <p class="step-title">Wire it into Claude Desktop</p>
+                <p class="step-note">
+                  Add to <code>~/Library/Application Support/Claude/claude_desktop_config.json</code>
+                  (macOS) or the equivalent on your platform:
+                </p>
+                <pre><code>{
+  "mcpServers": {
+    "bnb": {
+      "command": "node",
+      "args": ["/absolute/path/to/mithgard-bnb-mcp/dist/index.js"]
+    }
+  }
+}</code></pre>
+              </div>
+            </li>
+            <li>
+              <span class="step-num">3</span>
+              <div>
+                <p class="step-title">Restart Claude Desktop and ask a question</p>
+                <p class="step-note">
+                  Try: <em>"Search Airbnb listings in Berlin for 2 adults next weekend."</em>
+                  Claude will pick the <code>airbnb_search</code> tool and return real results.
+                </p>
+              </div>
+            </li>
+          </ol>
+        </div>
+      </section>
+
+      <section id="tools" class="tools">
+        <div class="container">
+          <h2>Nine tools</h2>
+          <p class="section-lede">
+            Two run live against public Airbnb data today. Seven are demo-grade with realistic
+            fixtures, ready to flip on the day Airbnb's Partner API access lands.
+          </p>
+          <ul class="tool-grid">
+            <li class="tool-card tool-live">
+              <div class="tool-head">
+                <code class="tool-name">airbnb_search</code>
+                <span class="tool-pill tool-pill-live">live</span>
+              </div>
+              <p>Search public Airbnb listings. Returns ids, titles, prices, locations, ratings.</p>
+            </li>
+            <li class="tool-card tool-live">
+              <div class="tool-head">
+                <code class="tool-name">airbnb_listing_details</code>
+                <span class="tool-pill tool-pill-live">live</span>
+              </div>
+              <p>Full listing detail: amenities, capacity, host card, reviews summary.</p>
+            </li>
+            <li class="tool-card tool-demo">
+              <div class="tool-head">
+                <code class="tool-name">host_insights</code>
+                <span class="tool-pill tool-pill-demo">demo</span>
+              </div>
+              <p>Occupancy, revenue, competitor delta, pricing recommendations per listing.</p>
+            </li>
+            <li class="tool-card tool-demo">
+              <div class="tool-head">
+                <code class="tool-name">guest_message_assistant</code>
+                <span class="tool-pill tool-pill-demo">demo</span>
+              </div>
+              <p>Drafts 3 host-voiced replies to a guest message. Always approval_required.</p>
+            </li>
+            <li class="tool-card tool-demo">
+              <div class="tool-head">
+                <code class="tool-name">booking_request_triage</code>
+                <span class="tool-pill tool-pill-demo">demo</span>
+              </div>
+              <p>Risk-scores a booking 0–100 with auditable reasons. Auto-accept / review / decline.</p>
+            </li>
+            <li class="tool-card tool-demo">
+              <div class="tool-head">
+                <code class="tool-name">smart_pricing</code>
+                <span class="tool-pill tool-pill-demo">demo</span>
+              </div>
+              <p>Daily price suggestions with weekday/seasonal/event factors. 30-day horizon.</p>
+            </li>
+            <li class="tool-card tool-demo">
+              <div class="tool-head">
+                <code class="tool-name">calendar_optimizer</code>
+                <span class="tool-pill tool-pill-demo">demo</span>
+              </div>
+              <p>Detects calendar gaps. Recommends discount / min-stay-relax / block actions.</p>
+            </li>
+            <li class="tool-card tool-demo">
+              <div class="tool-head">
+                <code class="tool-name">review_responder</code>
+                <span class="tool-pill tool-pill-demo">demo</span>
+              </div>
+              <p>Drafts a host-voiced reply, classifies sentiment, flags escalation cases.</p>
+            </li>
+            <li class="tool-card tool-demo">
+              <div class="tool-head">
+                <code class="tool-name">turnover_coordinator</code>
+                <span class="tool-pill tool-pill-demo">demo</span>
+              </div>
+              <p>Cleaning brief, 8-item checklist, crew message, estimated duration per turnover.</p>
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="not-section">
+        <div class="container two-col">
+          <div>
+            <h2>What this is <em>not</em></h2>
+            <ul class="checklist checklist-x">
+              <li>Not an official Airbnb product. Not affiliated with Airbnb.</li>
+              <li>Not a scraper-as-a-service. The two live tools read the same public pages a browser does, with caching and rate limiting.</li>
+              <li>Not a guest-side travel agent. It's the <em>opposite</em> — host-side ops.</li>
+              <li>Not a black box. Every recommendation is structured, auditable, and re-runnable.</li>
+            </ul>
+          </div>
+          <div id="why">
+            <h2>Why this exists</h2>
+            <p>
+              I host on Airbnb (Superhost). I also build software. Every tool that
+              <em>could</em> save me hours per week — pricing assistant, gap optimizer,
+              guest-message drafter — either doesn't exist, lives behind a $79/mo SaaS, or
+              gives me no audit trail.
+            </p>
+            <p>
+              MCP makes this fixable for the first time. One small open-source server,
+              one host's calendar, one agent that reasons about both.
+            </p>
+            <p>
+              The seven demo tools are the bet: when an Airbnb Partner API key lands,
+              they flip from fixture-backed to live in one afternoon. The interface
+              is already designed.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section id="contact" class="contact">
+        <div class="container">
+          <h2>Get in touch</h2>
+          <p class="section-lede">
+            Hosts, fellow tinkerers, or anyone at Airbnb thinking about Partner-API
+            access for MCP servers — please reach out.
+          </p>
+          <div class="contact-row">
+            <a class="btn btn-primary" href="mailto:nicolaskaitinnis1991@gmail.com">
+              nicolaskaitinnis1991@gmail.com
+            </a>
+            <a class="btn btn-ghost" href="https://github.com/nicolaskaitinnis1991/mithgard-bnb-mcp" rel="noopener" target="_blank">
+              github.com/.../mithgard-bnb-mcp ↗
+            </a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="container footer-row">
+        <p>
+          A <a href="https://mithgard.ai">Mithgard</a> project ·
+          <a href="https://github.com/nicolaskaitinnis1991/mithgard-bnb-mcp/blob/main/LICENSE" rel="noopener" target="_blank">MIT</a> ·
+          Built by Nico Kaitinnis · 2026
+        </p>
+        <p class="disclaimer">Independent project. Not affiliated with Airbnb, Inc.</p>
+      </div>
+    </footer>
+  </body>
+</html>
