@@ -9,6 +9,7 @@ import { buildBookingRequestTriageTool } from './booking-request-triage/tool.js'
 import { buildSmartPricingTool } from './smart-pricing/tool.js';
 import { buildCalendarOptimizerTool } from './calendar-optimizer/tool.js';
 import { buildReviewResponderTool } from './review-responder/tool.js';
+import { buildTurnoverCoordinatorTool } from './turnover-coordinator/tool.js';
 
 export interface AppDeps {
   search: SearchDeps;
@@ -27,6 +28,7 @@ export const mockTools = (): ToolDefinition[] => [
   buildSmartPricingTool(),
   buildCalendarOptimizerTool(),
   buildReviewResponderTool(),
+  buildTurnoverCoordinatorTool(),
 ];
 
 export const allTools = (deps: AppDeps): ToolDefinition[] => [...liveTools(deps), ...mockTools()];
