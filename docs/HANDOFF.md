@@ -5,14 +5,33 @@
 
 ---
 
-## Aktueller Stand (2026-05-03 — pitch-ready)
+## Aktueller Stand (2026-05-04 — v0.1.0-alpha, live parser + landing page)
 
 **Repo:** `~/Desktop/16_MITHGARD-BNB-MCP` + GitHub remote `https://github.com/nicolaskaitinnis1991/mithgard-bnb-mcp` (private)
 **Branch:** `main`
-**Commits:** ~105
-**Tags:** `foundation-complete`, `core-libs-complete`, `mcp-scaffolding-complete`, `search-tool-complete`, `listing-tool-complete`, `mock-tools-complete`, **`pitch-ready`**
-**Tests:** 75 grün + 2 skipped, 35 Test-Files
+**Commits:** ~112
+**Tags:** `foundation-complete`, `core-libs-complete`, `mcp-scaffolding-complete`, `search-tool-complete`, `listing-tool-complete`, `mock-tools-complete`, `pitch-ready`, **`v0.1.0-alpha`**
+**Tests:** 81 grün + 2 skipped, 36 Test-Files (75 → 81 durch +6 Live-Fixture-Tests)
 **Gates:** `npm run lint`, `npm run typecheck`, `npm test` alle exit 0
+
+### Live-Parser (NEU 04.05.2026)
+
+Die zwei Live-Tools `airbnb_search` und `airbnb_listing_details` liefern echte Airbnb-Daten.
+Catalog-Parser hatte rotierte JSON-Keys (`niobeMinimalClientData` mit `id`/`name`/`pricingQuote.rate`),
+echtes Airbnb nutzt seit Anfang 2026 `niobeClientData` mit GraphQL-Schema (`StaySearchResult`,
+`stayProductDetailPage`, base64-encoded `DemandStayListing:<num>` IDs).
+
+**Lösung:** Multi-Strategy-Parser in `src/parsers/airbnb-public.ts` — versucht zuerst Modern-Path,
+fällt zurück auf Legacy-Walker (für synthesized fixture). Beide Fixture-Sets (alt + live) bestehen.
+
+**Beweis:** Live-Smoke-Test in `docs/live-smoke-test-2026-05-04.txt` zeigt 18 echte Berlin-Listings
+mit echten Preisen + Ratings durch die MCP stdio-Pipeline.
+
+### Landing-Page (NEU 04.05.2026)
+
+`landing/` (HTML + CSS, kein JS-Framework, kein Build-Step) für `bnb.mithgard.ai`.
+`/vercel.json` deployt direkt das Verzeichnis als statisches Vercel-Projekt.
+Deploy-Anleitung für Nico in `landing/README.md` (7 Schritte, ~5 min).
 
 ### Catalog-Fortschritt
 
