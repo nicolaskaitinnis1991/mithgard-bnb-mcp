@@ -7,6 +7,7 @@ import { buildHostInsightsTool } from './host-insights/tool.js';
 import { buildGuestMessageAssistantTool } from './guest-message-assistant/tool.js';
 import { buildBookingRequestTriageTool } from './booking-request-triage/tool.js';
 import { buildSmartPricingTool } from './smart-pricing/tool.js';
+import { buildCalendarOptimizerTool } from './calendar-optimizer/tool.js';
 
 export interface AppDeps {
   search: SearchDeps;
@@ -23,6 +24,7 @@ export const mockTools = (): ToolDefinition[] => [
   buildGuestMessageAssistantTool(),
   buildBookingRequestTriageTool(),
   buildSmartPricingTool(),
+  buildCalendarOptimizerTool(),
 ];
 
 export const allTools = (deps: AppDeps): ToolDefinition[] => [...liveTools(deps), ...mockTools()];
