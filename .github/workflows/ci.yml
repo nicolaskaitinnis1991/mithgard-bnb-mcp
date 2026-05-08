@@ -13,5 +13,5 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run test:cov
-      - uses: codecov/codecov-action@v4
+      - uses: codecov/codecov-action@v6
         with: { files: ./coverage/lcov.info }
