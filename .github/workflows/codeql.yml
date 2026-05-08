@@ -4,6 +4,10 @@ on:
   schedule: [{ cron: '0 4 * * 1' }]
 jobs:
   analyze:
+    # Code Scanning upload requires GitHub Advanced Security on private repos
+    # (paid feature). On public repos it's free. Skip cleanly on private to keep
+    # CI status green; auto-activates the moment the repo flips to public.
+    if: ${{ github.event.repository.private == false || github.event.repository.visibility == 'public' }}
     runs-on: ubuntu-latest
     permissions:
       security-events: write
