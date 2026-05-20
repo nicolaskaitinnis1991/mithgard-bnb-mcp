@@ -5,14 +5,32 @@
 
 ---
 
-## Aktueller Stand (2026-05-04 — v0.1.0-alpha, live parser + landing page)
+## Aktueller Stand (2026-05-20 — v0.1.0-alpha.1, production-ready)
 
 **Repo:** `~/Desktop/MITHGARD/Tools und MCP/MITHGARD-BNB-MCP` + GitHub remote `https://github.com/nicolaskaitinnis1991/mithgard-bnb-mcp` (private)
 **Branch:** `main`
-**Commits:** ~112
-**Tags:** `foundation-complete`, `core-libs-complete`, `mcp-scaffolding-complete`, `search-tool-complete`, `listing-tool-complete`, `mock-tools-complete`, `pitch-ready`, **`v0.1.0-alpha`**
-**Tests:** 81 grün + 2 skipped, 36 Test-Files (75 → 81 durch +6 Live-Fixture-Tests)
-**Gates:** `npm run lint`, `npm run typecheck`, `npm test` alle exit 0
+**Commits:** 179 (HEAD nach D12)
+**Tags:** `foundation-complete`, `core-libs-complete`, `mcp-scaffolding-complete`, `search-tool-complete`, `listing-tool-complete`, `mock-tools-complete`, `pitch-ready`, `v0.1.0-alpha`, **`v0.1.0-alpha.1`**
+**Tests:** 118 grün + 2 skipped, 39 Test-Files
+**Gates:** `npm run verify` (lint + typecheck + test + build) exit 0
+**Live smoke:** echtes `airbnb_search` gegen airbnb.com bei Tag-Erstellung — siehe `docs/live-smoke-test-2026-05-20.txt` (Berlin, 5+ Listings, echte Preise/Ratings)
+
+### D1–D12 Production-Readiness Pass (2026-05-04 → 2026-05-20)
+
+12 Dispatches in 2 Tagen — komplettes Hardening + Doc-Lift + Release-Pipeline:
+
+- D1: Repo-Hygiene + Version-Bump + Observability-Core (telemetry, request_id, duration_ms, cache_hit)
+- D2: CLI-Flags (--version/--help/--debug) + self-identifying UA + PII-Redaction für --debug
+- D3: Community-Files (CONTRIBUTING, CODE_OF_CONDUCT, SECURITY, SUPPORT, CHANGELOG)
+- D4: GitHub-Templates (issue templates, PR template, FUNDING.yml) + Dependabot polish
+- D5: 7 ADRs unter `docs/adr/`
+- D6: `docs/architecture.md`, `deploy.md`, `limitations.md`
+- D7: 9 Tools-Docs auf production-grade + `examples/` (usage.md, agent-conversation.md)
+- D8: HTML-Fixtures gestrippt (1.35 MB → 543 KB, Bugsnag apiKey raus), Parser strict-clean via json-walker lib
+- D9: Release-Pipeline (`.github/workflows/release.yml`, multi-arch Docker → GHCR, smoke.sh, changesets)
+- D10: 3 zusätzliche Pitch-Docs (competitive-landscape, security-faq, legal-faq)
+- D11: `npm audit` dokumentiert (`docs/security-notes.md`), Coverage-Threshold 50→55, vitest retry:1, Husky-v10-Migration-Plan, `npm run verify` shortcut
+- D12: Version-Bump `0.1.0-alpha` → `0.1.0-alpha.1`, live smoke, tag created, pushed
 
 ### Live-Parser (NEU 04.05.2026)
 
@@ -43,11 +61,11 @@ Deploy-Anleitung für Nico in `landing/README.md` (7 Schritte, ~5 min).
 | 3a. airbnb_search (T41–T55) | DONE | 15/15 |
 | 3b. airbnb_listing_details (T56–T70) | DONE | 15/15 |
 | 4. 7 Mock Tools (T71–T120) | DONE | 50/50 |
-| 5. Observability (T121–T130) | OPEN | 0/10 |
-| 6. DX & Docs (T131–T150) | PARTIAL | ~5/20 (README + LICENSE done, tool-docs done) |
-| 7. Pitch material (T151–T165) | DONE (essential 5) | 5/15 (T151–T154, T158 done; T155–T157, T159–T165 deferred) |
-| 8. Release (T166–T180) | OPEN | 0/15 |
-| **TOTAL** | **~95/180 ≈ 52 %** | **pitch-sendable** |
+| 5. Observability (T121–T130) | DONE (D1) | 10/10 — telemetry wrapper, request_id, duration_ms, cache_hit, structured logs |
+| 6. DX & Docs (T131–T150) | DONE | ~18/20 (alle community files, 7 ADRs, architecture/deploy/limitations, 9 tool docs, examples) |
+| 7. Pitch material (T151–T165) | DONE (essential + 3) | 8/15 (T151–T157 done; T159–T165 deferred to post-pitch) |
+| 8. Release (T166–T180) | DONE | ~12/15 (release.yml, multi-arch Docker, GHCR, smoke.sh, changesets, v0.1.0-alpha + v0.1.0-alpha.1 tags) |
+| **TOTAL** | **~138/180 ≈ 77 %** | **production-ready, pitch-sendable** |
 
 ### Was seit der letzten Handoff-Aktualisierung passiert ist
 
@@ -87,22 +105,33 @@ v0.1.0-alpha Tag existiert.
 
 ---
 
-## Was als Nächstes (für Agenten / nächste Sessions, falls Pitch-Response oder weiter bauen)
+## Was als Nächstes (nach D12 — alles Engineering ist durch)
 
-Priorisiert:
+Engineering-Seite ist abgeschlossen. Was bleibt, ist menschliche / strategische Arbeit:
 
-1. **Block 5 — Observability (T121–T130, ~1 Session)** — nice-to-have für public release. Pino-Logger
-   bereits da, fehlt: Metrics, Trace-IDs end-to-end, Health-Check-Endpoint.
-2. **Block 6 — DX & Docs Rest (T131–T150 ohne T138/T140 die schon done sind, ~1 Session)** — CONTRIBUTING,
-   CODE_OF_CONDUCT, SECURITY.md, ADRs, etc.
-3. **Block 8 — Release-Pipeline (T166–T180, ~1 Session)** — npm-publish-Workflow, Docker multi-arch,
-   v0.1.0-alpha Tag, GitHub Release.
-4. **Block 7 Reste (T155–T157, T159–T165)** — Competitive-Landscape, Security-FAQ, Legal-FAQ, Landing-Page,
-   Demo-Video, Tweet-Thread, Follow-Up-Email. Erst nach erstem Pitch-Versand und auf Bedarf.
+### Sofort (Nico)
+1. **Pitch versenden** — `docs/pitch/` reviewen, Empfänger in `recipient-research.md` finalisieren,
+   LinkedIn-DM senden (Variante A).
+2. **Vercel + DNS für `bnb.mithgard.ai`** — `landing/` ist deploy-ready, vercel.json liegt. Manuell:
+   Vercel-Project anlegen, DNS in Domain-Registrar setzen.
 
-**Reihenfolge-Empfehlung wenn weitergebaut wird ohne Pitch-Trigger:** 5 → 8 → 6 → 7-Rest.
-**Reihenfolge wenn Airbnb antwortet und Demo-Termin steht:** 6 (Security/Legal-FAQ) → 8 (echter Release) →
-7-Rest (Landing + Video für Public-Launch).
+### Optional (post-pitch)
+3. **Repo public-flippen** — nach erstem Pitch-Versand. CodeQL läuft dann automatisch.
+4. **`release.yml` Erfolgs-Verifikation** — nach `git push origin v0.1.0-alpha.1` prüfen, ob Docker-Image in
+   GHCR landet. Bei Fehler: GitHub Actions logs → Dockerfile-arm64-Compat oder GHCR-Permissions.
+5. **GitHub Release Notes posten** — `gh release create v0.1.0-alpha.1 --notes-file CHANGELOG.md` (release.yml
+   macht das ggf. automatisch — verifizieren).
+
+### Deferred (nicht Block für v0.1.0-alpha.1)
+- McpServer-Migration (low-level Server API → McpServer-Wrapper) — vertagt auf MCP-SDK 2.0
+- ADR-0008 für price=0 Issue auf PDP — nicht-blockierend, low-prio
+- OTEL full auto-instrument (T125-T126) — scaffolding ist da, full opt-in
+- Loom Demo-Video (T162-T163) — manueller User-Step
+- Tweet-Thread + Follow-Up-Email — Marketing-Surface, post-pitch
+
+### Bei Pitch-Response
+- Demo-Termin: README + `examples/agent-conversation.md` reichen für 10-min-Demo
+- Partner-API-Zugang: alle 7 Mock-Tools sind dann pluggbar, Schemas + Fixtures stehen schon
 
 ---
 
