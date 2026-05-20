@@ -4,7 +4,7 @@ import { reviewResponderHandler } from './handler.js';
 import { wrapHandler, type ToolDefinition } from '../registry.js';
 import { withTelemetry } from '../../lib/telemetry.js';
 
-export const buildReviewResponderTool = (log: Logger): ToolDefinition => ({
+export const buildReviewResponderTool = (log: Logger, debug = false): ToolDefinition => ({
   name: 'review_responder',
   description:
     '[DEMO — requires Airbnb Partner API] Drafts a host-voiced response to a guest review, classifies sentiment, and flags escalation cases.',
@@ -21,8 +21,11 @@ export const buildReviewResponderTool = (log: Logger): ToolDefinition => ({
   schema: ReviewResponderInput,
   handler: wrapHandler(
     ReviewResponderInput,
-    withTelemetry(log, 'review_responder', (input) =>
-      reviewResponderHandler(input as ReviewResponderInputT),
+    withTelemetry(
+      log,
+      'review_responder',
+      (input) => reviewResponderHandler(input as ReviewResponderInputT),
+      { debug },
     ),
   ),
 });

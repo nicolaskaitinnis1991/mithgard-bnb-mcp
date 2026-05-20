@@ -6,7 +6,11 @@ import { isOk } from '../../lib/result.js';
 import { formatError } from '../../lib/errors.js';
 import { withTelemetry } from '../../lib/telemetry.js';
 
-export const buildListingDetailsTool = (deps: ListingDeps, log: Logger): ToolDefinition => ({
+export const buildListingDetailsTool = (
+  deps: ListingDeps,
+  log: Logger,
+  debug = false,
+): ToolDefinition => ({
   name: 'airbnb_listing_details',
   description:
     'Fetch full details for a single Airbnb listing on public data. Returns listing, reviews summary, and host summary.',
@@ -22,10 +26,15 @@ export const buildListingDetailsTool = (deps: ListingDeps, log: Logger): ToolDef
   schema: ListingDetailsInput,
   handler: wrapHandler(
     ListingDetailsInput,
-    withTelemetry(log, 'airbnb_listing_details', async (input) => {
-      const r = await listingHandler(deps)(input);
-      if (isOk(r)) return r.value;
-      return { error: formatError(r.error), kind: r.error.kind };
-    }),
+    withTelemetry(
+      log,
+      'airbnb_listing_details',
+      async (input) => {
+        const r = await listingHandler(deps)(input);
+        if (isOk(r)) return r.value;
+        return { error: formatError(r.error), kind: r.error.kind };
+      },
+      { debug },
+    ),
   ),
 });

@@ -4,7 +4,7 @@ import { smartPricingHandler } from './handler.js';
 import { wrapHandler, type ToolDefinition } from '../registry.js';
 import { withTelemetry } from '../../lib/telemetry.js';
 
-export const buildSmartPricingTool = (log: Logger): ToolDefinition => ({
+export const buildSmartPricingTool = (log: Logger, debug = false): ToolDefinition => ({
   name: 'smart_pricing',
   description:
     '[DEMO — requires Airbnb Partner API] Returns daily price suggestions with explainable reasons (weekday/seasonal/event factors). Capped at 30-day horizon.',
@@ -20,6 +20,6 @@ export const buildSmartPricingTool = (log: Logger): ToolDefinition => ({
   schema: SmartPricingInput,
   handler: wrapHandler(
     SmartPricingInput,
-    withTelemetry(log, 'smart_pricing', (input) => smartPricingHandler(input)),
+    withTelemetry(log, 'smart_pricing', (input) => smartPricingHandler(input), { debug }),
   ),
 });

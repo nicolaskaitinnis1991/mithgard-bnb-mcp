@@ -21,22 +21,25 @@ export interface AppDeps {
   debug?: boolean;
 }
 
-export const liveTools = (deps: AppDeps): ToolDefinition[] => [
-  buildSearchTool(deps.search, deps.log),
-  buildListingDetailsTool(deps.listing, deps.log),
-];
+export const liveTools = (deps: AppDeps): ToolDefinition[] => {
+  const debug = deps.debug ?? false;
+  return [
+    buildSearchTool(deps.search, deps.log, debug),
+    buildListingDetailsTool(deps.listing, deps.log, debug),
+  ];
+};
 
-export const mockTools = (log: Logger): ToolDefinition[] => [
-  buildHostInsightsTool(log),
-  buildGuestMessageAssistantTool(log),
-  buildBookingRequestTriageTool(log),
-  buildSmartPricingTool(log),
-  buildCalendarOptimizerTool(log),
-  buildReviewResponderTool(log),
-  buildTurnoverCoordinatorTool(log),
+export const mockTools = (log: Logger, debug = false): ToolDefinition[] => [
+  buildHostInsightsTool(log, debug),
+  buildGuestMessageAssistantTool(log, debug),
+  buildBookingRequestTriageTool(log, debug),
+  buildSmartPricingTool(log, debug),
+  buildCalendarOptimizerTool(log, debug),
+  buildReviewResponderTool(log, debug),
+  buildTurnoverCoordinatorTool(log, debug),
 ];
 
 export const allTools = (deps: AppDeps): ToolDefinition[] => [
   ...liveTools(deps),
-  ...mockTools(deps.log),
+  ...mockTools(deps.log, deps.debug ?? false),
 ];

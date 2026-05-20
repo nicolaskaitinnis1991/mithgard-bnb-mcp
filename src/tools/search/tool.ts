@@ -6,7 +6,7 @@ import { isOk } from '../../lib/result.js';
 import { formatError } from '../../lib/errors.js';
 import { withTelemetry } from '../../lib/telemetry.js';
 
-export const buildSearchTool = (deps: SearchDeps, log: Logger): ToolDefinition => ({
+export const buildSearchTool = (deps: SearchDeps, log: Logger, debug = false): ToolDefinition => ({
   name: 'airbnb_search',
   description:
     'Search Airbnb listings on public data. Returns listing IDs, titles, prices, locations.',
@@ -18,10 +18,15 @@ export const buildSearchTool = (deps: SearchDeps, log: Logger): ToolDefinition =
   schema: SearchInput,
   handler: wrapHandler(
     SearchInput,
-    withTelemetry(log, 'airbnb_search', async (input) => {
-      const r = await searchHandler(deps)(input as SearchInputT);
-      if (isOk(r)) return r.value;
-      return { error: formatError(r.error), kind: r.error.kind };
-    }),
+    withTelemetry(
+      log,
+      'airbnb_search',
+      async (input) => {
+        const r = await searchHandler(deps)(input as SearchInputT);
+        if (isOk(r)) return r.value;
+        return { error: formatError(r.error), kind: r.error.kind };
+      },
+      { debug },
+    ),
   ),
 });
