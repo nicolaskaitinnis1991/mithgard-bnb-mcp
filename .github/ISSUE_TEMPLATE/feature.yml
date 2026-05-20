@@ -1,0 +1,64 @@
+name: Feature request
+description: Suggest a new tool, a new field, or an improvement
+title: '[Feature]: '
+labels: ['enhancement', 'triage']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to suggest an improvement. The more specific you are about
+        the problem and the proposed shape of the solution, the faster we can evaluate it.
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Category
+      description: What kind of feature is this?
+      options:
+        - New tool
+        - New field on existing tool
+        - New core capability (telemetry, caching, transport, etc.)
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What problem does this solve? Who is affected and how often?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: |
+        What should be built? If this is a new tool, sketch the input and output shape
+        (zod-style or JSON pseudo-schema is fine).
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What other approaches did you consider, and why are they worse?
+
+  - type: textarea
+    id: additional_context
+    attributes:
+      label: Additional context
+      description: Anything else — links, screenshots, related issues.
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Preflight checklist
+      options:
+        - label: I searched existing issues and did not find a duplicate
+          required: true
+        - label: This proposal is open-source-shippable (does NOT depend on Airbnb Partner API access or any private credentials)
+          required: true
