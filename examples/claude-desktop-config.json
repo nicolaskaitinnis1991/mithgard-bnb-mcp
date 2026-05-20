@@ -2,7 +2,7 @@
   "mcpServers": {
     "mithgard-bnb": {
       "command": "node",
-      "args": ["/ABSOLUTE/PATH/TO/16_MITHGARD-BNB-MCP/dist/index.js"]
+      "args": ["/ABSOLUTE/PATH/TO/MITHGARD-BNB-MCP/dist/index.js"]
     }
   }
 }

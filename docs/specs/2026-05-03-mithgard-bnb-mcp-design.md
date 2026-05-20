@@ -3,7 +3,7 @@
 **Datum:** 2026-05-03
 **Autor:** Nico Kaitinnis (Mithgard)
 **Status:** Entwurf — wartet auf Nutzer-Freigabe vor dem Plan-Schreiben
-**Repo:** `~/Desktop/16_MITHGARD-BNB-MCP` (privat)
+**Repo:** `~/Desktop/MITHGARD/Tools und MCP/MITHGARD-BNB-MCP` (privat)
 
 ---
 

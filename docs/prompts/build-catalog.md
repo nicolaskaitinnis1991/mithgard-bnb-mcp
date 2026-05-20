@@ -15,7 +15,7 @@
 ## Datei-Struktur (Single Source of Truth)
 
 ```
-16_MITHGARD-BNB-MCP/
+MITHGARD-BNB-MCP/
 ├── CLAUDE.md                            ✓ existiert
 ├── README.md                            ✓ existiert (wird in T136 final)
 ├── LICENSE                              T140
@@ -1193,7 +1193,7 @@ describe('server e2e', () => {
   "mcpServers": {
     "mithgard-bnb": {
       "command": "node",
-      "args": ["/ABSOLUTE/PATH/TO/16_MITHGARD-BNB-MCP/dist/index.js"]
+      "args": ["/ABSOLUTE/PATH/TO/MITHGARD-BNB-MCP/dist/index.js"]
     }
   }
 }

@@ -7,7 +7,7 @@
 
 ## Aktueller Stand (2026-05-04 — v0.1.0-alpha, live parser + landing page)
 
-**Repo:** `~/Desktop/16_MITHGARD-BNB-MCP` + GitHub remote `https://github.com/nicolaskaitinnis1991/mithgard-bnb-mcp` (private)
+**Repo:** `~/Desktop/MITHGARD/Tools und MCP/MITHGARD-BNB-MCP` + GitHub remote `https://github.com/nicolaskaitinnis1991/mithgard-bnb-mcp` (private)
 **Branch:** `main`
 **Commits:** ~112
 **Tags:** `foundation-complete`, `core-libs-complete`, `mcp-scaffolding-complete`, `search-tool-complete`, `listing-tool-complete`, `mock-tools-complete`, `pitch-ready`, **`v0.1.0-alpha`**
