@@ -5,7 +5,10 @@
 [![Node](https://img.shields.io/badge/node-%3E%3D20-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 [![Status: pre-alpha](https://img.shields.io/badge/status-pre--alpha-orange.svg)](#status)
+[![Version](https://img.shields.io/badge/version-0.1.0--alpha-orange)](./CHANGELOG.md)
 [![MCP](https://img.shields.io/badge/protocol-MCP-7c3aed.svg)](https://modelcontextprotocol.io)
+<!-- CI badge renders externally once repo visibility flips to public -->
+[![CI](https://github.com/nicolaskaitinnis1991/mithgard-bnb-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/nicolaskaitinnis1991/mithgard-bnb-mcp/actions/workflows/ci.yml)
 
 ---
 
