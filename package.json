@@ -1,8 +1,26 @@
 {
   "name": "@mithgard/bnb-mcp",
-  "version": "0.0.0",
+  "version": "0.1.0-alpha",
   "private": true,
   "description": "Production-grade MCP server for Airbnb hosts. 2 live tools on public data, 7 demo tools showcasing Partner-API-grade host workflows.",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "airbnb",
+    "claude",
+    "ai-agent",
+    "host-tools",
+    "vacation-rental"
+  ],
+  "author": "Nico Kaitinnis <nicolaskaitinnis1991@gmail.com> (https://mithgard.ai)",
+  "homepage": "https://github.com/nicolaskaitinnis1991/mithgard-bnb-mcp#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nicolaskaitinnis1991/mithgard-bnb-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/nicolaskaitinnis1991/mithgard-bnb-mcp/issues"
+  },
   "type": "module",
   "engines": {
     "node": ">=20.0.0"
