@@ -100,11 +100,13 @@ Open Partner API access for individual hosts and the seven mock tools become rea
 
 ## Status
 
-- **Version:** v0.0.0 — pre-alpha, not yet on npm or ghcr.io.
-- **Tests:** 75 passing (+2 skipped), 35 test files. `npm run lint` / `npm run typecheck` / `npm test` all green.
-- **Commits:** 95+ on `main`, conventional, Husky-enforced.
+- **Version:** `v0.1.0-alpha` — tagged, not yet on npm or ghcr.io (public-flip pending, see [`docs/PRODUCTION-GAP-PLAN.md`](./docs/PRODUCTION-GAP-PLAN.md)).
+- **Tests:** 118 passing (+2 skipped), 39 test files. All 4 gates green (`npm run lint` / `npm run typecheck` / `npm test` / `npm run build`).
+- **Coverage thresholds:** 80 / 50 / 80 / 80 (lines / branches / functions / statements), enforced in CI.
+- **Commits:** 170+ on `main`, conventional, Husky-enforced.
+- **CI:** GitHub Actions green on every push to `main` (lint + typecheck + test + build + CodeQL).
 - **Tags:** `foundation-complete`, `core-libs-complete`, `mcp-scaffolding-complete`, `search-tool-complete`,
-  `listing-tool-complete`, `mock-tools-complete`, `pitch-ready`.
+  `listing-tool-complete`, `mock-tools-complete`, `pitch-ready`, `v0.1.0-alpha`.
 
 ## License
 
