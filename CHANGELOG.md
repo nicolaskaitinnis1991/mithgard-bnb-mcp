@@ -5,7 +5,49 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/).
 
+> Note: `npx changeset version` (D12) consolidated the prerelease counter from
+> `0.1.0-alpha` to `0.1.0-alpha.1`. The auto-bump produced `0.1.0` (collapse of the
+> prerelease line) because changesets requires an explicit `pre enter` workflow
+> to retain the `-alpha` track. We manually overrode `package.json#version` back
+> to `0.1.0-alpha.1`. The audit trail of intent remains in `.changeset/`.
+
 ## [Unreleased]
+
+## [0.1.0-alpha.1] — 2026-05-04
+
+Production-readiness pass on top of `0.1.0-alpha`. No behavioural changes for end
+users beyond what `0.1.0-alpha` shipped; this release focuses on documentation,
+observability, fixtures, release pipeline, and gate hardening.
+
+### Added
+
+- 7 ADRs documenting key architectural decisions (`docs/adr/`)
+- `docs/architecture.md`, `docs/deploy.md`, `docs/limitations.md`
+- 9 production-quality tool docs under `docs/tools/`
+- `examples/usage.md`, `examples/agent-conversation.md` — real Claude transcripts
+- Community files: `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, `SUPPORT.md`
+- GitHub issue templates (`bug.yml`, `feature.yml`, `config.yml`), PR template, `FUNDING.yml`
+- Release pipeline (`.github/workflows/release.yml`): multi-arch Docker build to GHCR on tag push
+- `scripts/smoke.sh` for local + Docker smoke testing
+- 3 additional pitch docs: `competitive-landscape.md`, `security-faq.md`, `legal-faq.md`
+- `docs/dev/husky-v10-migration.md` — Husky v10 migration plan
+- `docs/security-notes.md` — npm audit traceback (4 transitive, none in runtime path)
+- `npm run verify` — single-command gate (`lint && typecheck && test && build`)
+- Vitest `retry: 1` for flake tolerance on timing tests
+
+### Changed
+
+- HTML fixtures stripped (1.35 MB → 543 KB) — Bugsnag apiKey removed from snapshots
+- JSON walker extracted to `src/lib/json-walker.ts`; parser is now strict-clean
+- Vitest branch threshold tightened from 50% to 55%
+- Self-identifying User-Agent: `mithgard-bnb-mcp/<ver> (+repo URL)` (no more spoofed Chrome string)
+
+### Security
+
+- Documented all 4 transitive npm audit findings; none in the runtime path
+- Confirmed no `eslint-disable` rot in `src/` outside of two justified locations
+  (`src/server.ts` for MCP-SDK deprecation, `src/lib/json-walker.ts` for walker-internal)
+- No PII storage; logs are redacted at sink; `--debug` envelope dumps also redacted
 
 ## [0.1.0-alpha] — 2026-05-04
 
@@ -53,5 +95,6 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/).
 - HTTPS-only outbound traffic
 - Conservative rate limiting (1 req/sec, 60/hr)
 
-[Unreleased]: https://github.com/nicolaskaitinnis1991/mithgard-bnb-mcp/compare/v0.1.0-alpha...HEAD
+[Unreleased]: https://github.com/nicolaskaitinnis1991/mithgard-bnb-mcp/compare/v0.1.0-alpha.1...HEAD
+[0.1.0-alpha.1]: https://github.com/nicolaskaitinnis1991/mithgard-bnb-mcp/releases/tag/v0.1.0-alpha.1
 [0.1.0-alpha]: https://github.com/nicolaskaitinnis1991/mithgard-bnb-mcp/releases/tag/v0.1.0-alpha

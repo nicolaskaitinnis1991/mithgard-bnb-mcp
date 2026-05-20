@@ -1,6 +1,6 @@
 {
   "name": "@mithgard/bnb-mcp",
-  "version": "0.1.0-alpha",
+  "version": "0.1.0-alpha.1",
   "private": true,
   "description": "Production-grade MCP server for Airbnb hosts. 2 live tools on public data, 7 demo tools showcasing Partner-API-grade host workflows.",
   "keywords": [
