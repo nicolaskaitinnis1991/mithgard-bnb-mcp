@@ -13,3 +13,7 @@ coverage/
 .nyc_output/
 .cache/
 .claude/launch.json
+
+# Audit-watcher artifact — file belongs to the watcher process, not this repo.
+audit.md
+audit-*.md
