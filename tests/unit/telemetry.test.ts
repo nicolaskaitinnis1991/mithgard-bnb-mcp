@@ -14,8 +14,9 @@ const fakeLogger = (): Logger => {
   const log = {
     info: vi.fn(),
     error: vi.fn(),
+    debug: vi.fn(),
   };
-  // pino's Logger type has many methods; the wrapper only touches info/error.
+  // pino's Logger type has many methods; the wrapper only touches info/error/debug.
   // The cast is safe because withTelemetry never reaches anything else.
   return log as unknown as Logger;
 };
@@ -72,5 +73,36 @@ describe('withTelemetry', () => {
 
     const [payload] = firstCall(vi.mocked(log.info));
     expect(payload.request_id).toMatch(/^[0-9a-f]{16}$/);
+  });
+
+  it('does NOT emit tool.envelope when debug is off', async () => {
+    const log = fakeLogger();
+    const wrapped = withTelemetry(log, 'no-debug', (i: { email: string }) => Promise.resolve(i));
+    await wrapped({ email: 'a@b.c' });
+    expect(log.debug).not.toHaveBeenCalled();
+  });
+
+  it('emits tool.envelope with sanitised input+output when debug is on', async () => {
+    const log = fakeLogger();
+    const wrapped = withTelemetry(
+      log,
+      'debug-on',
+      (_i: { email: string; id: number }) =>
+        Promise.resolve({ host_name: 'Nico', listing_id: '1' }),
+      { debug: true },
+    );
+    await wrapped({ email: 'a@b.c', id: 42 });
+    expect(log.debug).toHaveBeenCalledTimes(1);
+    const debugMock = vi.mocked(log.debug);
+    const args = debugMock.mock.calls[0];
+    if (!args) throw new Error('debug not called');
+    const [payload, msg] = args as [
+      { tool: string; request_id: string; input: unknown; output: unknown },
+      string,
+    ];
+    expect(msg).toBe('tool.envelope');
+    expect(payload.tool).toBe('debug-on');
+    expect(payload.input).toEqual({ email: '[REDACTED]', id: 42 });
+    expect(payload.output).toEqual({ host_name: '[REDACTED]', listing_id: '1' });
   });
 });
