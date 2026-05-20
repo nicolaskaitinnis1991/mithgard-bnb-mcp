@@ -45,6 +45,7 @@ const main = async () => {
           ...(q.min_price !== undefined ? { min_price: q.min_price } : {}),
           ...(q.max_price !== undefined ? { max_price: q.max_price } : {}),
         }),
+      log,
     },
     listing: {
       http,
@@ -57,6 +58,7 @@ const main = async () => {
       parse: (html, listingId) => parseListingDetails(html, listingId),
       log,
     },
+    log,
   };
 
   const tools = allTools(deps);

@@ -1,7 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
+import type { Logger } from 'pino';
 import { buildListingDetailsTool } from '../../src/tools/listing-details/tool.js';
 import { ok } from '../../src/lib/result.js';
 import type { ListingDeps } from '../../src/tools/listing-details/handler.js';
+
+const silentLogger = (): Logger => ({ info: vi.fn(), error: vi.fn() }) as unknown as Logger;
 
 describe('buildListingDetailsTool', () => {
   it('exposes airbnb_listing_details name', () => {
@@ -27,7 +30,7 @@ describe('buildListingDetailsTool', () => {
           host_summary: { name: '', superhost: false, joined: '' },
         }),
     };
-    const t = buildListingDetailsTool(deps);
+    const t = buildListingDetailsTool(deps, silentLogger());
     expect(t.name).toBe('airbnb_listing_details');
   });
 });

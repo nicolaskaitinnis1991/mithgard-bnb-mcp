@@ -1,3 +1,4 @@
+import type { Logger } from 'pino';
 import type { ToolDefinition } from './registry.js';
 import { buildSearchTool } from './search/tool.js';
 import type { SearchDeps } from './search/handler.js';
@@ -14,21 +15,25 @@ import { buildTurnoverCoordinatorTool } from './turnover-coordinator/tool.js';
 export interface AppDeps {
   search: SearchDeps;
   listing: ListingDeps;
+  log: Logger;
 }
 
 export const liveTools = (deps: AppDeps): ToolDefinition[] => [
-  buildSearchTool(deps.search),
-  buildListingDetailsTool(deps.listing),
+  buildSearchTool(deps.search, deps.log),
+  buildListingDetailsTool(deps.listing, deps.log),
 ];
 
-export const mockTools = (): ToolDefinition[] => [
-  buildHostInsightsTool(),
-  buildGuestMessageAssistantTool(),
-  buildBookingRequestTriageTool(),
-  buildSmartPricingTool(),
-  buildCalendarOptimizerTool(),
-  buildReviewResponderTool(),
-  buildTurnoverCoordinatorTool(),
+export const mockTools = (log: Logger): ToolDefinition[] => [
+  buildHostInsightsTool(log),
+  buildGuestMessageAssistantTool(log),
+  buildBookingRequestTriageTool(log),
+  buildSmartPricingTool(log),
+  buildCalendarOptimizerTool(log),
+  buildReviewResponderTool(log),
+  buildTurnoverCoordinatorTool(log),
 ];
 
-export const allTools = (deps: AppDeps): ToolDefinition[] => [...liveTools(deps), ...mockTools()];
+export const allTools = (deps: AppDeps): ToolDefinition[] => [
+  ...liveTools(deps),
+  ...mockTools(deps.log),
+];

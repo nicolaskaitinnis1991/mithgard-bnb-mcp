@@ -1,3 +1,4 @@
+import type { Logger } from 'pino';
 import type { SearchInputT } from './schema.js';
 import { type Result, ok } from '../../lib/result.js';
 import type { McpError } from '../../lib/errors.js';
@@ -18,6 +19,7 @@ export interface SearchDeps {
   http: { get: (url: string) => Promise<Result<string, McpError>> };
   cache: { get: (k: string) => unknown; set: (k: string, v: unknown) => void };
   parse: (html: string, q: SearchInputT) => Result<SearchParseResult, McpError>;
+  log?: Logger;
 }
 
 const buildUrl = (i: SearchInputT): string => {
@@ -36,7 +38,9 @@ export const searchHandler =
   async (input: SearchInputT): Promise<Result<unknown, McpError>> => {
     const url = buildUrl(input);
     const cached = deps.cache.get(url);
-    if (cached !== undefined && cached !== null) return ok(cached);
+    const cache_hit = cached !== undefined && cached !== null;
+    deps.log?.info({ tool: 'airbnb_search', cache_hit }, 'tool.cache');
+    if (cache_hit) return ok(cached);
 
     const resp = await deps.http.get(url);
     if (!resp.ok) return resp;
