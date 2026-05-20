@@ -1,8 +1,10 @@
+import type { Logger } from 'pino';
 import { CalendarOptimizerInput, type CalendarOptimizerInputT } from './schema.js';
 import { calendarOptimizerHandler } from './handler.js';
 import { wrapHandler, type ToolDefinition } from '../registry.js';
+import { withTelemetry } from '../../lib/telemetry.js';
 
-export const buildCalendarOptimizerTool = (): ToolDefinition => ({
+export const buildCalendarOptimizerTool = (log: Logger): ToolDefinition => ({
   name: 'calendar_optimizer',
   description:
     '[DEMO — requires Airbnb Partner API] Detects calendar gaps in a 30/60/90-day horizon and recommends discount / min-stay-relax / block actions.',
@@ -15,7 +17,10 @@ export const buildCalendarOptimizerTool = (): ToolDefinition => ({
     required: ['listing_id'],
   },
   schema: CalendarOptimizerInput,
-  handler: wrapHandler(CalendarOptimizerInput, (input) =>
-    calendarOptimizerHandler(input as CalendarOptimizerInputT),
+  handler: wrapHandler(
+    CalendarOptimizerInput,
+    withTelemetry(log, 'calendar_optimizer', (input) =>
+      calendarOptimizerHandler(input as CalendarOptimizerInputT),
+    ),
   ),
 });

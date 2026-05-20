@@ -1,8 +1,10 @@
+import type { Logger } from 'pino';
 import { ReviewResponderInput, type ReviewResponderInputT } from './schema.js';
 import { reviewResponderHandler } from './handler.js';
 import { wrapHandler, type ToolDefinition } from '../registry.js';
+import { withTelemetry } from '../../lib/telemetry.js';
 
-export const buildReviewResponderTool = (): ToolDefinition => ({
+export const buildReviewResponderTool = (log: Logger): ToolDefinition => ({
   name: 'review_responder',
   description:
     '[DEMO — requires Airbnb Partner API] Drafts a host-voiced response to a guest review, classifies sentiment, and flags escalation cases.',
@@ -17,7 +19,10 @@ export const buildReviewResponderTool = (): ToolDefinition => ({
     required: ['review_id', 'review_text', 'rating'],
   },
   schema: ReviewResponderInput,
-  handler: wrapHandler(ReviewResponderInput, (input) =>
-    reviewResponderHandler(input as ReviewResponderInputT),
+  handler: wrapHandler(
+    ReviewResponderInput,
+    withTelemetry(log, 'review_responder', (input) =>
+      reviewResponderHandler(input as ReviewResponderInputT),
+    ),
   ),
 });

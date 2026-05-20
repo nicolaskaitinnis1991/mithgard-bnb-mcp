@@ -1,8 +1,10 @@
+import type { Logger } from 'pino';
 import { HostInsightsInput, type HostInsightsInputT } from './schema.js';
 import { hostInsightsHandler } from './handler.js';
 import { wrapHandler, type ToolDefinition } from '../registry.js';
+import { withTelemetry } from '../../lib/telemetry.js';
 
-export const buildHostInsightsTool = (): ToolDefinition => ({
+export const buildHostInsightsTool = (log: Logger): ToolDefinition => ({
   name: 'host_insights',
   description:
     '[DEMO — requires Airbnb Partner API] Returns occupancy, revenue, competitor delta, and pricing recommendations per listing.',
@@ -18,7 +20,10 @@ export const buildHostInsightsTool = (): ToolDefinition => ({
     required: ['listing_id'],
   },
   schema: HostInsightsInput,
-  handler: wrapHandler(HostInsightsInput, (input) =>
-    hostInsightsHandler(input as HostInsightsInputT),
+  handler: wrapHandler(
+    HostInsightsInput,
+    withTelemetry(log, 'host_insights', (input) =>
+      hostInsightsHandler(input as HostInsightsInputT),
+    ),
   ),
 });

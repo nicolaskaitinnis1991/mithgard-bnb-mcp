@@ -1,8 +1,10 @@
+import type { Logger } from 'pino';
 import { TurnoverInput } from './schema.js';
 import { turnoverHandler } from './handler.js';
 import { wrapHandler, type ToolDefinition } from '../registry.js';
+import { withTelemetry } from '../../lib/telemetry.js';
 
-export const buildTurnoverCoordinatorTool = (): ToolDefinition => ({
+export const buildTurnoverCoordinatorTool = (log: Logger): ToolDefinition => ({
   name: 'turnover_coordinator',
   description:
     '[DEMO — requires Airbnb Partner API] Generates cleaning brief, 8-item checklist, crew message draft, and estimated duration for a turnover.',
@@ -17,5 +19,8 @@ export const buildTurnoverCoordinatorTool = (): ToolDefinition => ({
     required: ['listing_id', 'checkout_at', 'checkin_at'],
   },
   schema: TurnoverInput,
-  handler: wrapHandler(TurnoverInput, (input) => turnoverHandler(input)),
+  handler: wrapHandler(
+    TurnoverInput,
+    withTelemetry(log, 'turnover_coordinator', (input) => turnoverHandler(input)),
+  ),
 });

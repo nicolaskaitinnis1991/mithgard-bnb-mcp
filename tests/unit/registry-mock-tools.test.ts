@@ -1,5 +1,8 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import type { Logger } from 'pino';
 import { mockTools, allTools, type AppDeps } from '../../src/tools/index.js';
+
+const silentLogger = (): Logger => ({ info: vi.fn(), error: vi.fn() }) as unknown as Logger;
 
 const stubDeps: AppDeps = {
   search: {
@@ -31,11 +34,12 @@ const stubDeps: AppDeps = {
       },
     }),
   },
+  log: silentLogger(),
 };
 
 describe('tool registry — mock tools', () => {
   it('exposes exactly 7 mock tools by expected names', () => {
-    const names = mockTools().map((t) => t.name);
+    const names = mockTools(silentLogger()).map((t) => t.name);
     expect(names).toEqual([
       'host_insights',
       'guest_message_assistant',
@@ -52,13 +56,13 @@ describe('tool registry — mock tools', () => {
   });
 
   it('every mock tool description starts with the [DEMO ...] prefix', () => {
-    for (const t of mockTools()) {
+    for (const t of mockTools(silentLogger())) {
       expect(t.description).toMatch(/^\[DEMO — requires Airbnb Partner API\]/);
     }
   });
 
   const findMock = (name: string) => {
-    const t = mockTools().find((m) => m.name === name);
+    const t = mockTools(silentLogger()).find((m) => m.name === name);
     if (t === undefined) throw new Error(`mock tool not found: ${name}`);
     return t;
   };

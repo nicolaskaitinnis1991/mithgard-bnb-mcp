@@ -1,8 +1,10 @@
+import type { Logger } from 'pino';
 import { BookingTriageInput } from './schema.js';
 import { bookingTriageHandler } from './handler.js';
 import { wrapHandler, type ToolDefinition } from '../registry.js';
+import { withTelemetry } from '../../lib/telemetry.js';
 
-export const buildBookingRequestTriageTool = (): ToolDefinition => ({
+export const buildBookingRequestTriageTool = (log: Logger): ToolDefinition => ({
   name: 'booking_request_triage',
   description:
     '[DEMO — requires Airbnb Partner API] Risk-scores a booking request 0-100 with auditable reasoning. Recommends auto_accept / review / auto_decline.',
@@ -35,5 +37,8 @@ export const buildBookingRequestTriageTool = (): ToolDefinition => ({
     required: ['thread_id', 'guest_profile', 'trip'],
   },
   schema: BookingTriageInput,
-  handler: wrapHandler(BookingTriageInput, (input) => bookingTriageHandler(input)),
+  handler: wrapHandler(
+    BookingTriageInput,
+    withTelemetry(log, 'booking_request_triage', (input) => bookingTriageHandler(input)),
+  ),
 });
