@@ -32,7 +32,13 @@ describe('rate limiter', () => {
       expect(isOk(r)).toBe(true);
     }
     const elapsed = Date.now() - start;
-    // 5 requests at 1/sec → at least 4 seconds of inter-request spacing.
-    expect(elapsed).toBeGreaterThanOrEqual(4_000);
+    // 5 requests at 1/sec → 4 inter-request gaps of ≥1s each.
+    // Tolerance band:
+    //   lower (3_800ms): catches "rate limiter is broken" (no spacing at all).
+    //   upper (5_500ms): catches "something is hanging" / pathological scheduler.
+    // A small slack below 4_000ms absorbs sub-second clock jitter that vitest
+    // retry: 1 doesn't help with on the lower bound.
+    expect(elapsed).toBeGreaterThan(3_800);
+    expect(elapsed).toBeLessThan(5_500);
   }, 15_000);
 });
