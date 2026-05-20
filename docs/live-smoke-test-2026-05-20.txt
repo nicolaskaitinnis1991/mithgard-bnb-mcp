@@ -1,0 +1,25 @@
+# Live smoke test — v0.1.0-alpha.1 — 2026-05-20
+
+## Command
+
+```bash
+(printf '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"airbnb_search","arguments":{"location":"Berlin"}}}
+'; sleep 8) | node dist/index.js
+```
+
+## Raw response (formatted)
+
+```json
+{
+    "result": {
+        "content": [
+            {
+                "type": "text",
+                "text": "{\"results\":[{\"id\":\"1348574879310010332\",\"title\":\"Numa | Medium Studio with Kitchenette\",\"url\":\"https://www.airbnb.com/rooms/1348574879310010332\",\"price_per_night\":555,\"currency\":\"EUR\",\"location\":\"Berlin\",\"rating\":4.85,\"review_count\":319},{\"id\":\"49070135\",\"title\":\"Numa | Medium Room near KaDeWe\",\"url\":\"https://www.airbnb.com/rooms/49070135\",\"price_per_night\":454,\"currency\":\"EUR\",\"location\":\"Berlin\",\"rating\":4.74,\"review_count\":2756},{\"id\":\"1440368404830960024\",\"title\":\"Hotel ROMY by AMANO\",\"url\":\"https://www.airbnb.com/rooms/1440368404830960024\",\"price_per_night\":598,\"currency\":\"EUR\",\"location\":\"unknown\",\"rating\":4.79,\"review_count\":267},{\"id\":\"699809535745814134\",\"title\":\"Numa | Medium Studio w/ Kitchenette near Kudamm\",\"url\":\"https://www.airbnb.com/rooms/699809535745814134\",\"price_per_night\":499,\"currency\":\"EUR\",\"location\":\"Berlin\",\"rating\":4.74,\"review_count\":438},{\"id\":\"1345611651216239245\",\"title\":\"Numa | Large Room in Berlin Mitte\",\"url\":\"https://www.airbnb.com/rooms/1345611651216239245\",\"price_per_night\":667,\"currency\":\"EUR\",\"location\":\"Berlin\",\"rating\":4.88,\"review_count\":412},{\"id\":\"917109042412215124\",\"title\":\"Numa | Medium Room near Savignyplatz\",\"url\":\"https://www.airbnb.com/rooms/917109042412215124\",\"price_per_night\":550,\"currency\":\"EUR\",\"location\":\"Berlin\",\"rating\":4.78,\"review_count\":878},{\"id\":\"1476613499447780452\",\"title\":\"AMANO Grand Central\",\"url\":\"https://www.airbnb.com/rooms/1476613499447780452\",\"price_per_night\":609,\"currency\":\"EUR\",\"location\":\"unknown\",\"rating\":4.66,\"review_count\":257},{\"id\":\"1291353530628751166\",\"title\":\"Romance on the lake\",\"url\":\"https://www.airbnb.com/rooms/1291353530628751166\",\"price_per_night\":1075,\"currency\":\"EUR\",\"location\":\"Berlin\",\"rating\":5,\"review_count\":5},{\"id\":\"721527807549293451\",\"title\":\"Numa | Large Studio near Checkpoint Charlie\",\"url\":\"https://www.airbnb.com/rooms/721527807549293451\",\"price_per_night\":1000,\"currency\":\"EUR\",\"location\":\"Berlin\",\"rating\":4.67,\"review_count\":1638},{\"id\":\"1359377017583012847\",\"title\":\"Limehome Berlin Muellerstr. | Suite\",\"url\":\"https://www.airbnb.com/rooms/1359377017583012847\",\"price_per_night\":531,\"currency\":\"EUR\",\"location\":\"Berlin\",\"rating\":4.73,\"review_count\":480},{\"id\":\"1162140795024884880\",\"title\":\"Numa | Large Room with sofa bed near Berlin Zoo\",\"url\":\"https://www.airbnb.com/rooms/1162140795024884880\",\"price_per_night\":539,\"currency\":\"EUR\",\"location\":\"Berlin\",\"rating\":4.73,\"review_count\":192},{\"id\":\"1385446247362929990\",\"title\":\"Hotel AMANO\",\"url\":\"https://www.airbnb.com/rooms/1385446247362929990\",\"price_per_night\":670,\"currency\":\"EUR\",\"location\":\"unknown\",\"rating\":4.75,\"review_count\":488},{\"id\":\"1683843484146213679\",\"title\":\"2 free Bikes & central Berlin Studio\",\"url\":\"https://www.airbnb.com/rooms/1683843484146213679\",\"price_per_night\":664,\"currency\":\"EUR\",\"location\":\"Berlin\"},{\"id\":\"1624772384106830305\",\"title\":\"B&B HOTEL Berlin-Charlottenburg\",\"url\":\"https://www.airbnb.com/rooms/1624772384106830305\",\"price_per_night\":495,\"currency\":\"EUR\",\"location\":\"unknown\",\"rating\":4.83,\"review_count\":6},{\"id\":\"1407223490428433001\",\"title\":\"NIDO by PATIO\",\"url\":\"https://www.airbnb.com/rooms/1407223490428433001\",\"price_per_night\":2310,\"currency\":\"EUR\",\"location\":\"Berlin\",\"rating\":5,\"review_count\":20},{\"id\":\"47215807\",\"title\":\"Double Hotel Gat Point Charlie Berlin\",\"url\":\"https://www.airbnb.com/rooms/47215807\",\"price_per_night\":545,\"currency\":\"EUR\",\"location\":\"Berlin\",\"rating\":4.62,\"review_count\":1458},{\"id\":\"1180292826169774688\",\"title\":\"Light-filled musician's room with grand piano.\",\"url\":\"https://www.airbnb.com/rooms/1180292826169774688\",\"price_per_night\":475,\"currency\":\"EUR\",\"location\":\"Berlin\"},{\"id\":\"1466697713325630350\",\"title\":\"Comfortable double room close to Ku'damm\",\"url\":\"https://www.airbnb.com/rooms/1466697713325630350\",\"price_per_night\":322,\"currency\":\"EUR\",\"location\":\"Berlin\",\"rating\":4.45,\"review_count\":96}],\"total_estimate\":18,\"query\":{\"location\":\"Berlin\",\"adults\":2,\"children\":0,\"currency\":\"EUR\"},\"_source\":\"public\"}"
+            }
+        ]
+    },
+    "jsonrpc": "2.0",
+    "id": 1
+}
+```
