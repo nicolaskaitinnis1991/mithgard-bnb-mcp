@@ -1,6 +1,7 @@
 import * as cheerio from 'cheerio';
 import { type Result, ok, err } from '../lib/result.js';
 import { type McpError, parseFailed } from '../lib/errors.js';
+import { drill, findFirstKey, walkObjects } from '../lib/json-walker.js';
 import type {
   Listing,
   ListingFull,
@@ -49,7 +50,19 @@ export const parseSearchResults = (
 
   // Strategy 2: legacy walker (synthesized fixture / pre-2026 deploys)
   const legacy: Listing[] = [];
-  walkForListingsLegacy(json, legacy);
+  walkObjects(json, (obj) => {
+    if (typeof obj.id === 'string' && typeof obj.name === 'string' && obj.pricingQuote) {
+      const pq = obj.pricingQuote as { rate?: { amount?: number; currency?: string } };
+      legacy.push({
+        id: obj.id,
+        title: obj.name,
+        url: `https://www.airbnb.com/rooms/${obj.id}`,
+        price_per_night: pq.rate?.amount ?? 0,
+        currency: pq.rate?.currency ?? 'EUR',
+        location: typeof obj.city === 'string' ? obj.city : 'unknown',
+      });
+    }
+  });
   return ok({ listings: legacy, total: legacy.length });
 };
 
@@ -84,13 +97,13 @@ export const parseListingDetails = (
 
 const parseModernSearchResults = (json: unknown): Listing[] => {
   // Path: niobeClientData[i][1].data.presentation.staysSearch.results.searchResults[]
-  const ncd = pluck(json, 'niobeClientData');
+  const ncd = drill(json, ['niobeClientData']);
   if (!Array.isArray(ncd)) return [];
   const listings: Listing[] = [];
   for (const entry of ncd) {
     if (!Array.isArray(entry) || entry.length < 2) continue;
     const payload: unknown = entry[1];
-    const sr = pluck(payload, 'data', 'presentation', 'staysSearch', 'results', 'searchResults');
+    const sr = drill(payload, ['data', 'presentation', 'staysSearch', 'results', 'searchResults']);
     if (!Array.isArray(sr)) continue;
     for (const r of sr) {
       const parsed = parseModernSearchResult(r);
@@ -164,14 +177,14 @@ const parseModernListingDetails = (
   json: unknown,
   listingId: string,
 ): ListingDetailsParsed | null => {
-  const ncd = pluck(json, 'niobeClientData');
+  const ncd = drill(json, ['niobeClientData']);
   if (!Array.isArray(ncd)) return null;
 
   // Find the entry whose payload has stayProductDetailPage
   let pdp: Record<string, unknown> | null = null;
   for (const entry of ncd) {
     if (!Array.isArray(entry) || entry.length < 2) continue;
-    const candidate = pluck(entry[1], 'data', 'presentation', 'stayProductDetailPage');
+    const candidate = drill(entry[1], ['data', 'presentation', 'stayProductDetailPage']);
     if (candidate && typeof candidate === 'object') {
       pdp = candidate as Record<string, unknown>;
       break;
@@ -321,7 +334,7 @@ const parseLegacyListingDetails = (
   json: unknown,
   listingId: string,
 ): Result<ListingDetailsParsed, McpError> => {
-  const root = pluck(json, 'niobeMinimalClientData');
+  const root = drill(json, ['niobeMinimalClientData']);
   const pdp = findFirstKey(root, 'bookingPdpSections');
   if (pdp === undefined) return err(parseFailed('bookingPdpSections', 'listing'));
 
@@ -407,58 +420,6 @@ const parseLegacyListingDetails = (
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-/** Walk a property-key path through unknown JSON, returning undefined on any miss. */
-const pluck = (o: unknown, ...path: string[]): unknown => {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let cur: any = o;
-  for (const p of path) {
-    if (cur === null || cur === undefined) return undefined;
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
-    cur = cur[p];
-  }
-  return cur as unknown;
-};
-
-const findFirstKey = (node: unknown, key: string): unknown => {
-  if (node === null || node === undefined) return undefined;
-  if (Array.isArray(node)) {
-    for (const n of node) {
-      const r = findFirstKey(n, key);
-      if (r !== undefined) return r;
-    }
-    return undefined;
-  }
-  if (typeof node !== 'object') return undefined;
-  const obj = node as Record<string, unknown>;
-  if (key in obj) return obj[key];
-  for (const v of Object.values(obj)) {
-    const r = findFirstKey(v, key);
-    if (r !== undefined) return r;
-  }
-  return undefined;
-};
-
-const walkForListingsLegacy = (node: unknown, out: Listing[]): void => {
-  if (Array.isArray(node)) {
-    for (const n of node) walkForListingsLegacy(n, out);
-    return;
-  }
-  if (typeof node !== 'object' || node === null) return;
-  const obj = node as Record<string, unknown>;
-  if (typeof obj.id === 'string' && typeof obj.name === 'string' && obj.pricingQuote) {
-    const pq = obj.pricingQuote as { rate?: { amount?: number; currency?: string } };
-    out.push({
-      id: obj.id,
-      title: obj.name,
-      url: `https://www.airbnb.com/rooms/${obj.id}`,
-      price_per_night: pq.rate?.amount ?? 0,
-      currency: pq.rate?.currency ?? 'EUR',
-      location: typeof obj.city === 'string' ? obj.city : 'unknown',
-    });
-  }
-  for (const v of Object.values(obj)) walkForListingsLegacy(v, out);
-};
 
 /**
  * Decode Airbnb's base64-wrapped global IDs.
