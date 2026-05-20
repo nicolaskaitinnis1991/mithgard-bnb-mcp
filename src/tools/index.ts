@@ -16,6 +16,9 @@ export interface AppDeps {
   search: SearchDeps;
   listing: ListingDeps;
   log: Logger;
+  // When true (set by --debug flag), tool handlers emit `tool.envelope` log
+  // lines with sanitised input/output for verbose stderr debugging.
+  debug?: boolean;
 }
 
 export const liveTools = (deps: AppDeps): ToolDefinition[] => [
