@@ -80,6 +80,8 @@ export const computePricing = (input: SmartPricingInputT): SmartPricingOutputT =
 
   return {
     daily_prices: daily,
+    currency: 'EUR',
+    estimate_basis: 'all_nights_booked_before_fees',
     summary: {
       avg_suggested: avg,
       total_revenue_estimate: total,

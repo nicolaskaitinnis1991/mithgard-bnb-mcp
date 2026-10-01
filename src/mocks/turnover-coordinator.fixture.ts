@@ -47,7 +47,7 @@ export const computeTurnover = (input: TurnoverInputT): TurnoverOutputT => {
     `Checkout: ${checkoutDate} ${checkoutTime} → Check-in: ${checkinDate} ${checkinTime}`,
     `Estimated duration: ${String(duration)} min`,
     input.cleaner_id !== undefined
-      ? `Assigned cleaner: ${input.cleaner_id}`
+      ? `Proposed cleaner: ${input.cleaner_id}`
       : 'Cleaner: TBD — assign before crew message goes out',
   ].join('\n');
 
@@ -56,11 +56,23 @@ export const computeTurnover = (input: TurnoverInputT): TurnoverOutputT => {
     `- Checkout ${checkoutDate} at ${checkoutTime}`,
     `- Next check-in ${checkinDate} at ${checkinTime}`,
     `- Estimated ${String(duration)} min`,
-    `Full checklist + supplies status in the app. Reply when started/done. Thanks!`,
+    `Draft only: confirm assignment, checklist, supplies and time window before sending. Reply when started/done. Thanks!`,
   ].join('\n');
 
   return {
     brief,
+    approval_required: true,
+    window_minutes: (Date.parse(input.checkin_at) - Date.parse(input.checkout_at)) / 60000,
+    feasible: (Date.parse(input.checkin_at) - Date.parse(input.checkout_at)) / 60000 >= duration,
+    warnings: [
+      ...((Date.parse(input.checkin_at) - Date.parse(input.checkout_at)) / 60000 < duration
+        ? ['Cleaning estimate exceeds the available turnover window; resolve before assigning.']
+        : []),
+      ...(input.cleaner_id === undefined
+        ? ['No cleaner assigned; assignment and availability must be confirmed.']
+        : []),
+      'Demo checklist and duration are illustrative, not listing-specific or a confirmed crew booking.',
+    ],
     checklist: CHECKLIST,
     crew_message_draft,
     estimated_duration_min: duration,

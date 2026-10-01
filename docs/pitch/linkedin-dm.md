@@ -1,3 +1,5 @@
+> Historical May 2026 material. Claims, counts and workflows below are not current verification evidence. See [the current README](../../README.md) and [October verification](../readiness-2026-10-01.md). No outreach or deployment is authorized by this file.
+
 # LinkedIn DM — short variant
 
 > LinkedIn DM character limit: ~1300 connection-request char limit, ~8000 message char limit.

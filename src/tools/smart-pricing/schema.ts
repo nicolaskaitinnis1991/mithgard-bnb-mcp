@@ -1,27 +1,46 @@
 import { z } from 'zod';
 
-const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+import { boundedId, isoDate } from '../../lib/validation.js';
 
-export const SmartPricingInput = z.object({
-  listing_id: z.string().min(1),
-  from: z.string().regex(ISO_DATE),
-  to: z.string().regex(ISO_DATE),
-});
+export const SmartPricingInput = z
+  .object({
+    listing_id: boundedId,
+    from: isoDate,
+    to: isoDate,
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (value.to < value.from)
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['to'],
+        message: 'to must be on or after from',
+      });
+    const span = (Date.parse(value.to) - Date.parse(value.from)) / 86400000 + 1;
+    if (span > 30)
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['to'],
+        message: 'Pricing horizon cannot exceed 30 days',
+      });
+  });
 export type SmartPricingInputT = z.infer<typeof SmartPricingInput>;
 
 export const DailyPrice = z.object({
-  date: z.string(),
-  suggested: z.number(),
-  current: z.number().optional(),
+  date: isoDate,
+  suggested: z.number().nonnegative(),
+  current: z.number().nonnegative().optional(),
   delta_pct: z.number().optional(),
   reasons: z.array(z.string()),
 });
 
 export const SmartPricingOutput = z.object({
   daily_prices: z.array(DailyPrice),
+  currency: z.literal('EUR'),
+  estimate_basis: z.literal('all_nights_booked_before_fees'),
   summary: z.object({
-    avg_suggested: z.number(),
-    total_revenue_estimate: z.number(),
+    avg_suggested: z.number().nonnegative(),
+    total_revenue_estimate: z.number().nonnegative(),
   }),
   _mock: z.literal(true),
   _pitch: z.string(),

@@ -1,147 +1,64 @@
 # host_insights
 
-> Surfaces revenue gaps vs local competitors and concrete pricing actions for
-> a host's listing over a recent window.
-> Status: **Demo (requires Airbnb Partner API)** — current implementation
-> returns one of three deterministic fixtures based on `listing_id`.
+Illustrative performance dashboard. **Demo only:** output always carries `_mock: true`. This tool has no Airbnb Partner API connection and performs no external action. Treat results as examples, never as observed host data.
 
-## Purpose
+## Contract
 
-`host_insights` is the agent's "how is my listing doing?" tool. Given a
-`listing_id` and a time window, it returns occupancy, revenue, the gap to
-local competitors, a small set of pricing recommendations, and a few prose
-insights an agent can read out to the host. It is the natural starting point
-for a host-facing conversation before drilling into
-[`smart_pricing`](./smart_pricing.md) or
-[`calendar_optimizer`](./calendar_optimizer.md).
+- `listing_id`: nonempty identifier, at most 200 characters.
+- `period`: `last_30d` (default), `last_90d`, or `last_year`.
+- `reference_date`: optional real `YYYY-MM-DD`; defaults to the current UTC date.
 
-## Input schema
+The listing/period hash selects one of three sample performance profiles. Revenue and competitor numbers are synthetic, not observations. Recommendation dates are relative to `reference_date`. Periods do not calculate actual historical revenue.
 
-```ts
-{
-  listing_id: string;                                  // required
-  period?: "last_30d" | "last_90d" | "last_year";      // default "last_30d"
-}
-```
+All inputs reject unknown fields. Identifiers and free text are bounded. Invalid input produces an MCP tool error before the handler runs. Outputs are validated against the registered Zod schema.
 
-Source: [`src/tools/host-insights/schema.ts`](../../src/tools/host-insights/schema.ts).
+## Reproducible offline example
 
-## Output shape
+This input/output pair was generated from the fixture handler, not from a real host account. Dates are explicit for reproducibility.
 
-```jsonc
-{
-  "occupancy_rate": 0.52,                  // 0..1
-  "revenue_eur": 3120,
-  "competitor_avg_revenue_eur": 4480,
-  "delta_pct": -30.4,                      // signed
-  "pricing_recommendations": [
-    {
-      "date_range": "2026-05-15..2026-05-22",
-      "current": 89,                       // current nightly EUR
-      "suggested": 119,                    // proposed nightly EUR
-      "reason": "Mid-week dip + local trade fair drives demand"
-    }
-  ],
-  "insights": [
-    "Occupancy 30% below local benchmark — pricing is too rigid...",
-    "Competitor avg nightly: 112 EUR. You charge 89 EUR flat...",
-    "Recommend: enable smart_pricing tool for daily price tuning."
-  ],
-  "_mock": true,
-  "_pitch": "Surfaces revenue gaps and concrete pricing actions per listing"
-}
-```
-
-## Example
-
-### Agent prompt
-
-> "How is listing 12345 doing in the last 30 days vs the local market?"
-
-### Tool call (JSON-RPC)
+Input:
 
 ```json
 {
-  "method": "tools/call",
-  "params": {
-    "name": "host_insights",
-    "arguments": {
-      "listing_id": "12345",
-      "period": "last_30d"
-    }
-  }
+  "listing_id": "12345",
+  "period": "last_30d",
+  "reference_date": "2026-10-01"
 }
 ```
 
-### Response (one of three deterministic fixtures: under-performing profile)
+Output:
 
-```jsonc
+```json
 {
-  "occupancy_rate": 0.52,
-  "revenue_eur": 3120,
-  "competitor_avg_revenue_eur": 4480,
-  "delta_pct": -30.4,
+  "occupancy_rate": 0.71,
+  "revenue_eur": 4280,
+  "competitor_avg_revenue_eur": 4350,
+  "delta_pct": -1.6,
   "pricing_recommendations": [
     {
-      "date_range": "2026-05-15..2026-05-22",
-      "current": 89,
+      "date_range": "2026-10-08..2026-10-15",
+      "current": 109,
       "suggested": 119,
-      "reason": "Mid-week dip + local trade fair drives demand"
-    },
-    {
-      "date_range": "2026-05-23..2026-05-31",
-      "current": 89,
-      "suggested": 99,
-      "reason": "Weekend uplift, competition averaging 105 EUR"
+      "reason": "Sold-out competitors within 1km — small uplift safe"
     }
   ],
   "insights": [
-    "Occupancy 30% below local benchmark — pricing is too rigid for weekday/weekend split.",
-    "Competitor avg nightly: 112 EUR. You charge 89 EUR flat. Loss estimated at 1.4K EUR/30d.",
-    "Recommend: enable smart_pricing tool for daily price tuning."
+    "Listing performs at market. Small upside via event-based pricing.",
+    "Average daily rate within 2% of competitors.",
+    "Recommend: monitor calendar gaps via calendar_optimizer."
   ],
+  "reference_date": "2026-10-01",
   "_mock": true,
   "_pitch": "Surfaces revenue gaps and concrete pricing actions per listing"
 }
 ```
 
-The fixture profile (under-performing / at-market / over-performing) is
-chosen deterministically from the `listing_id` hash, so the same id always
-returns the same numbers across calls — useful for demos and tests. Full
-fixture data: [`src/mocks/host-insights.fixture.ts`](../../src/mocks/host-insights.fixture.ts).
+## Source and validation
 
-## Edge cases & failure modes
+- [Schema](../../src/tools/host-insights/schema.ts)
+- [Handler](../../src/tools/host-insights/handler.ts)
+- [Fixture](../../src/mocks/host-insights.fixture.ts)
+- [Synthetic host regression scenarios](../../tests/integration/virtual-host-scenarios.test.ts)
+- [Limitations](../limitations.md)
 
-- **Demo data only** — `_mock: true` is always set. Real Partner-API
-  integration would pull the host's actual reservation history and an
-  aggregated comp-set from Airbnb's market explorer.
-- **Invalid `period`** → `ValidationFailed` returned to the caller before the
-  handler runs.
-- **Unknown `listing_id`** → still returns a fixture (the hash always maps
-  somewhere). A real implementation would return `NotImplemented` or an
-  upstream 404.
-
-## Performance characteristics
-
-- **Cache TTL**: none (pure compute, deterministic).
-- **Rate-limited**: no.
-- **Typical p95 latency**: <2 ms (fixture lookup).
-
-## When to use
-
-- ✅ Best for: opening a host-coaching conversation, demos of the agent's
-  pricing-advisor capability, integration testing of downstream tools that
-  consume insights output.
-- ❌ Not for: real revenue reporting, anything a host would put in their
-  books — the numbers are illustrative.
-
-## See also
-
-- Source: [`src/tools/host-insights/`](../../src/tools/host-insights/)
-- Schema: [`src/tools/host-insights/schema.ts`](../../src/tools/host-insights/schema.ts)
-- Fixture: [`src/mocks/host-insights.fixture.ts`](../../src/mocks/host-insights.fixture.ts)
-- Related tools: [`smart_pricing`](./smart_pricing.md),
-  [`calendar_optimizer`](./calendar_optimizer.md),
-  [`review_responder`](./review_responder.md)
-- Mock-vs-live honesty policy:
-  [ADR-0005](../adr/0005-mock-vs-live-honesty.md)
+Synthetic scenarios are automated acceptance tests. They do not constitute human user testing.

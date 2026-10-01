@@ -6,5 +6,5 @@ export const hostInsightsHandler = (input: HostInsightsInputT): Promise<HostInsi
   const idx = pickIndex(`${input.listing_id}:${input.period}`, PROFILE_ORDER.length);
   const profile = PROFILE_ORDER[idx];
   if (profile === undefined) throw new Error('host_insights: profile index out of bounds');
-  return Promise.resolve(fixtureFor(profile));
+  return Promise.resolve(fixtureFor(profile, input.reference_date));
 };

@@ -1,10 +1,14 @@
+import { currentUtcDate } from '../lib/validation.js';
 import type { HostInsightsOutputT } from '../tools/host-insights/schema.js';
 
 export type Profile = 'under_performing' | 'at_market' | 'over_performing';
 
 export const HOST_INSIGHTS_PITCH = 'Surfaces revenue gaps and concrete pricing actions per listing';
 
-const PROFILES: Record<Profile, Omit<HostInsightsOutputT, '_mock' | '_pitch'>> = {
+const PROFILES: Record<
+  Profile,
+  Omit<HostInsightsOutputT, '_mock' | '_pitch' | 'reference_date'>
+> = {
   under_performing: {
     occupancy_rate: 0.52,
     revenue_eur: 3120,
@@ -12,13 +16,13 @@ const PROFILES: Record<Profile, Omit<HostInsightsOutputT, '_mock' | '_pitch'>> =
     delta_pct: -30.4,
     pricing_recommendations: [
       {
-        date_range: '2026-05-15..2026-05-22',
+        date_range: 'illustrative_window_1',
         current: 89,
         suggested: 119,
         reason: 'Mid-week dip + local trade fair drives demand',
       },
       {
-        date_range: '2026-05-23..2026-05-31',
+        date_range: 'illustrative_window_2',
         current: 89,
         suggested: 99,
         reason: 'Weekend uplift, competition averaging 105 EUR',
@@ -37,7 +41,7 @@ const PROFILES: Record<Profile, Omit<HostInsightsOutputT, '_mock' | '_pitch'>> =
     delta_pct: -1.6,
     pricing_recommendations: [
       {
-        date_range: '2026-05-20..2026-05-26',
+        date_range: 'illustrative_window_1',
         current: 109,
         suggested: 119,
         reason: 'Sold-out competitors within 1km — small uplift safe',
@@ -56,7 +60,7 @@ const PROFILES: Record<Profile, Omit<HostInsightsOutputT, '_mock' | '_pitch'>> =
     delta_pct: 31.8,
     pricing_recommendations: [
       {
-        date_range: '2026-06-01..2026-06-07',
+        date_range: 'illustrative_window_1',
         current: 139,
         suggested: 149,
         reason: 'Demand pressure: 86% occupancy, ladder up cautiously',
@@ -72,8 +76,22 @@ const PROFILES: Record<Profile, Omit<HostInsightsOutputT, '_mock' | '_pitch'>> =
 
 export const PROFILE_ORDER: Profile[] = ['under_performing', 'at_market', 'over_performing'];
 
-export const fixtureFor = (profile: Profile): HostInsightsOutputT => ({
-  ...PROFILES[profile],
-  _mock: true,
-  _pitch: HOST_INSIGHTS_PITCH,
-});
+export const fixtureFor = (
+  profile: Profile,
+  referenceDate = currentUtcDate(),
+): HostInsightsOutputT => {
+  const addDays = (days: number): string =>
+    new Date(Date.parse(`${referenceDate}T00:00:00Z`) + days * 86400000).toISOString().slice(0, 10);
+  return {
+    ...PROFILES[profile],
+    reference_date: referenceDate,
+    pricing_recommendations: PROFILES[profile].pricing_recommendations.map(
+      (recommendation, index) => ({
+        ...recommendation,
+        date_range: `${addDays(7 + index * 7)}..${addDays(14 + index * 7)}`,
+      }),
+    ),
+    _mock: true,
+    _pitch: HOST_INSIGHTS_PITCH,
+  };
+};

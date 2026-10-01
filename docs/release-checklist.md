@@ -1,40 +1,14 @@
-# Release Checklist
+# Release checklist
 
-Run through this before tagging a release.
+A release is separate from a draft PR and requires a deliberate version/tag publication.
 
-## Pre-flight (all must be ✅)
+- Use Node 24 and a clean checkout of the intended commit.
+- Run npm ci, npm run verify and npm audit --audit-level=moderate.
+- Build the container and run node scripts/smoke.mjs --docker IMAGE.
+- Record which platforms were actually tested; multi-architecture CI configuration is not local runtime evidence.
+- Review CHANGELOG, contract changes, demo labels and the dated verification report.
+- Select an alpha version while provider integration and human acceptance remain unfinished.
+- After an authorized version tag, verify the release workflow, published image digest and initialized MCP smoke.
+- Never send historical pitch drafts or publish a stable-readiness claim as an automatic release step.
 
-- [ ] `git status` clean on `main`
-- [ ] `npm run lint` exit 0
-- [ ] `npm run typecheck` exit 0
-- [ ] `npm test` exit 0
-- [ ] `npm run build` exit 0
-- [ ] `bash scripts/smoke.sh` passes against local build
-- [ ] `CHANGELOG.md` has an `[Unreleased]` section with actual changes (not empty)
-- [ ] No `TODO|FIXME|XXX` markers in `src/` (run `git grep -nE "TODO|FIXME|XXX" src/`)
-- [ ] No new `eslint-disable` without inline justification
-- [ ] All open dependabot PRs reviewed (merge safe ones, defer breaking ones)
-
-## Cut release
-
-- [ ] Decide version: SemVer (`MAJOR.MINOR.PATCH[-prerelease]`)
-- [ ] Run `npx changeset version` (rewrites CHANGELOG + bumps `package.json#version`)
-- [ ] Verify `package.json#version` and `CHANGELOG.md` look right
-- [ ] Commit: `chore(release): vX.Y.Z`
-- [ ] Tag: `git tag -a vX.Y.Z -m "vX.Y.Z"` (sign with `-s` if GPG configured)
-- [ ] Push: `git push origin main --follow-tags`
-
-## Verify the release
-
-- [ ] GitHub Actions `release.yml` workflow runs and succeeds (all 3 jobs green)
-- [ ] Docker image visible at `ghcr.io/nicolaskaitinnis1991/mithgard-bnb-mcp:vX.Y.Z`
-- [ ] `docker pull ghcr.io/.../mithgard-bnb-mcp:vX.Y.Z` works
-- [ ] `bash scripts/smoke.sh ghcr.io/.../mithgard-bnb-mcp:vX.Y.Z` passes
-- [ ] GitHub Release published (visible at `/releases/tag/vX.Y.Z`)
-- [ ] Release notes are sensible (not empty, not gibberish)
-
-## Post-release
-
-- [ ] If pre-release (alpha/beta/rc): no further action; users opt in by tag
-- [ ] If stable: announce per `docs/pitch/recipient-research.md` cadence
-- [ ] Open `[Unreleased]` section in CHANGELOG for the next development cycle
+See [deployment](deploy.md) and [rollback](rollback.md).

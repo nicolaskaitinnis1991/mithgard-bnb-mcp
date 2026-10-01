@@ -1,3 +1,5 @@
+> Historical May 2026 record. Use [October verification](readiness-2026-10-01.md) for current status.
+
 # Production Gap Plan — 2026-05-08
 
 > Author: planner-subagent (Claude Opus 4.7 1M)

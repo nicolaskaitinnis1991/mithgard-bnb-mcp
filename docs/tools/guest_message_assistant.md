@@ -1,92 +1,51 @@
 # guest_message_assistant
 
-> Drafts three host-voiced replies (short / friendly / formal) to a guest
-> message, with a recommended index. Always requires host approval before
-> sending.
-> Status: **Demo (requires Airbnb Partner API)** — current implementation
-> detects topic by keyword and returns templated drafts.
+Draft guest acknowledgements without invented house facts. **Demo only:** output always carries `_mock: true`. This tool has no Airbnb Partner API connection and performs no external action. Treat results as examples, never as observed host data.
 
-## Purpose
+## Contract
 
-`guest_message_assistant` is the safest of the host-workflow demo tools:
-given the most recent guest message, it returns three pre-written reply
-options keyed to a detected topic (wifi, check-in, late arrival,
-cancellation, pets, or a generic fallback) in three tones. It never sends
-anything — `approval_required: true` is hard-coded, and the recommended
-index just biases the host toward a tone match. A real implementation would
-use Airbnb's Messaging API to actually deliver the chosen reply.
+- `thread_id`: nonempty identifier, at most 200 characters.
+- `last_message`: nonempty text, at most 16,000 characters.
+- `host_voice`: `casual`, `professional`, or `warm` (default).
 
-## Input schema
+A keyword heuristic selects wifi, check-in, late arrival, cancellation, pet, or generic acknowledgement templates. It does not read a listing, reservation or conversation history. Drafts ask for verification rather than inventing passwords, access codes, check-in times, pet permission or fees. `missing_context` identifies information that must be supplied before giving a factual answer. `approval_required: true` applies to every draft; this tool never sends messages.
 
-```ts
-{
-  thread_id: string;                                          // required
-  last_message: string;                                       // required, non-empty
-  host_voice?: "casual" | "professional" | "warm";            // default "warm"
-}
-```
+All inputs reject unknown fields. Identifiers and free text are bounded. Invalid input produces an MCP tool error before the handler runs. Outputs are validated against the registered Zod schema.
 
-Source: [`src/tools/guest-message-assistant/schema.ts`](../../src/tools/guest-message-assistant/schema.ts).
+## Reproducible offline example
 
-## Output shape
+This input/output pair was generated from the fixture handler, not from a real host account. Dates are explicit for reproducibility.
 
-```jsonc
-{
-  "suggestions": [
-    { "tone": "short",    "text": "..." },
-    { "tone": "friendly", "text": "..." },
-    { "tone": "formal",   "text": "..." }
-  ],
-  "recommended_index": 1,        // 0..2; chosen by host_voice
-  "approval_required": true,     // always true — hard gate
-  "_mock": true,
-  "_pitch": "Drafts host-voiced replies with approval gate"
-}
-```
-
-`recommended_index` is `0` for `casual`, `1` for `warm`, `2` for
-`professional`. Always exactly 3 suggestions.
-
-## Example
-
-### Agent prompt
-
-> "A guest just asked for the wifi password — draft me a reply in my normal
-> warm tone."
-
-### Tool call (JSON-RPC)
+Input:
 
 ```json
 {
-  "method": "tools/call",
-  "params": {
-    "name": "guest_message_assistant",
-    "arguments": {
-      "thread_id": "thread-abc",
-      "last_message": "Hi, what is the wifi password?",
-      "host_voice": "warm"
-    }
-  }
+  "thread_id": "demo-thread",
+  "last_message": "What is the wifi password?",
+  "host_voice": "warm"
 }
 ```
 
-### Response
+Output:
 
-```jsonc
+```json
 {
   "suggestions": [
     {
       "tone": "short",
-      "text": "Wifi: \"BnBGuest\" / Password: \"welcome2026\". Router by the entrance."
+      "text": "I will check the correct wifi details for your accommodation and get back to you."
     },
     {
       "tone": "friendly",
-      "text": "Hi! The wifi network is \"BnBGuest\" and the password is \"welcome2026\". The router is right by the entrance — let me know if anything is unclear!"
+      "text": "Hi! Thanks for asking. I will confirm the wifi network and password for your accommodation and get back to you."
     },
     {
       "tone": "formal",
-      "text": "Dear guest, please find the wifi credentials below: SSID \"BnBGuest\", password \"welcome2026\". The router is located at the entrance area. Kind regards."
+      "text": "Dear guest, I will verify the wifi details for your accommodation before sharing them with you."
     }
+  ],
+  "missing_context": [
+    "Verified listing wifi credentials"
   ],
   "recommended_index": 1,
   "approval_required": true,
@@ -95,51 +54,12 @@ Source: [`src/tools/guest-message-assistant/schema.ts`](../../src/tools/guest-me
 }
 ```
 
-Topic detection: case-insensitive keyword scan against the last message.
-Keywords (per topic) live in
-[`src/mocks/guest-message-assistant.fixture.ts`](../../src/mocks/guest-message-assistant.fixture.ts):
+## Source and validation
 
-- `wifi`: "wifi", "wlan", "internet"
-- `checkin`: "check-in", "checkin", "check in", "einchecken"
-- `late`: "late", "spät", "verspät", "delay"
-- `cancel`: "cancel", "storno", "refund", "rückerstattung"
-- `pet`: "pet", "hund", "katze", "dog", "cat"
+- [Schema](../../src/tools/guest-message-assistant/schema.ts)
+- [Handler](../../src/tools/guest-message-assistant/handler.ts)
+- [Fixture](../../src/mocks/guest-message-assistant.fixture.ts)
+- [Synthetic host regression scenarios](../../tests/integration/virtual-host-scenarios.test.ts)
+- [Limitations](../limitations.md)
 
-No match → `default` topic (generic "I'll get back to you").
-
-## Edge cases & failure modes
-
-- **Demo data only** — `_mock: true` always set. Real version would call the
-  Airbnb Messaging API and offer to actually send the chosen suggestion.
-- **PII in `last_message`** — logger redacts `*.message_text` by default
-  (see [`src/config/logger.ts`](../../src/config/logger.ts)). The tool itself
-  echoes nothing of the message back in the output.
-- **Multilingual message that matches multiple topics** → first match wins
-  (in declared order: wifi → checkin → late → cancel → pet).
-- **No topic match** → `default` topic returns generic acknowledgement, not
-  an error.
-
-## Performance characteristics
-
-- **Cache TTL**: none.
-- **Rate-limited**: no.
-- **Typical p95 latency**: <1 ms (pure string scan + template lookup).
-
-## When to use
-
-- ✅ Best for: pre-drafting replies the host can approve in one tap, demos of
-  approval-gated agent flows, integration into a host inbox UI.
-- ❌ Not for: anything resembling auto-send. `approval_required` exists
-  precisely to prevent that. Also not for novel/edge-case messages that don't
-  fit one of the six template topics — a real LLM-backed implementation
-  belongs there.
-
-## See also
-
-- Source: [`src/tools/guest-message-assistant/`](../../src/tools/guest-message-assistant/)
-- Schema: [`src/tools/guest-message-assistant/schema.ts`](../../src/tools/guest-message-assistant/schema.ts)
-- Fixture: [`src/mocks/guest-message-assistant.fixture.ts`](../../src/mocks/guest-message-assistant.fixture.ts)
-- Related tools: [`booking_request_triage`](./booking_request_triage.md),
-  [`review_responder`](./review_responder.md)
-- Mock-vs-live honesty policy:
-  [ADR-0005](../adr/0005-mock-vs-live-honesty.md)
+Synthetic scenarios are automated acceptance tests. They do not constitute human user testing.

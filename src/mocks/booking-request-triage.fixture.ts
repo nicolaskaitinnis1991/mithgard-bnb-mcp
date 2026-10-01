@@ -3,12 +3,14 @@ import type {
   BookingTriageOutputT,
 } from '../tools/booking-request-triage/schema.js';
 
+import { currentUtcDate } from '../lib/validation.js';
+
 export const BOOKING_TRIAGE_PITCH =
   'Risk-scores guests with auditable reasoning, never auto-acts without approval';
 
-const yearsSince = (iso: string): number => {
+const yearsSince = (iso: string, referenceDate: string): number => {
   const joined = new Date(iso);
-  const now = new Date('2026-05-03T00:00:00Z');
+  const now = new Date(`${referenceDate}T00:00:00Z`);
   const ms = now.getTime() - joined.getTime();
   return ms / (1000 * 60 * 60 * 24 * 365.25);
 };
@@ -21,7 +23,8 @@ export const computeTriage = (input: BookingTriageInputT): BookingTriageOutputT 
   // Start at 50 (neutral). Lower = safer.
   let score = 50;
 
-  const years = yearsSince(input.guest_profile.joined);
+  const referenceDate = input.reference_date ?? currentUtcDate();
+  const years = yearsSince(input.guest_profile.joined, referenceDate);
   if (years >= 3) {
     score -= 15;
     green.push(`Account age ${years.toFixed(1)} years (>3 yr).`);
@@ -84,12 +87,14 @@ export const computeTriage = (input: BookingTriageInputT): BookingTriageOutputT 
   if (score > 100) score = 100;
 
   let recommendation: BookingTriageOutputT['recommendation'];
-  if (score <= 25) recommendation = 'auto_accept';
-  else if (score >= 75) recommendation = 'auto_decline';
+  if (score <= 25) recommendation = 'accept_after_review';
+  else if (score >= 75) recommendation = 'decline_after_review';
   else recommendation = 'review';
 
   return {
     risk_score: Math.round(score),
+    approval_required: true,
+    reference_date: referenceDate,
     recommendation,
     reasoning,
     red_flags: red,

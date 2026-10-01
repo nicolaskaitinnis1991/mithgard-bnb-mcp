@@ -1,3 +1,5 @@
+> Historical May 2026 material. Claims, counts and workflows below are not current verification evidence. See [the current README](../../README.md) and [October verification](../readiness-2026-10-01.md). No outreach or deployment is authorized by this file.
+
 # Competitive Landscape
 
 > Where this project sits relative to existing tools that touch Airbnb workflows. This is honest:

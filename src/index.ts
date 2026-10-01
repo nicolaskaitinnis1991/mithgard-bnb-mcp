@@ -8,6 +8,8 @@ import { createHttpClient } from './lib/http.js';
 import { createCache } from './lib/cache.js';
 import { parseSearchResults, parseListingDetails } from './parsers/airbnb-public.js';
 import { parseArgs, USAGE } from './lib/cli.js';
+import { OperationsAgent } from './operations/agent.js';
+import { buildOperationsTool } from './operations/tool.js';
 
 // package.json read happens here (and again in server.ts) — duplication is
 // deliberate: env.ts loads before package.json can be parsed, so we resolve
@@ -48,6 +50,11 @@ const main = async () => {
     ratePerSec: env.HTTP_RATE_PER_SEC,
     ratePerHour: env.HTTP_RATE_PER_HOUR,
     userAgent,
+    timeoutMs: env.HTTP_TIMEOUT_MS,
+    maxQueueSize: env.HTTP_MAX_QUEUE_SIZE,
+    maxResponseBytes: env.HTTP_MAX_RESPONSE_BYTES,
+    maxRetries: env.HTTP_MAX_RETRIES,
+    maxRetryAfterMs: env.HTTP_MAX_RETRY_AFTER_MS,
   });
   const searchCache = createCache<object>({
     max: env.CACHE_MAX_SEARCH,
@@ -95,11 +102,48 @@ const main = async () => {
     debug: intent.debug,
   };
 
-  const tools = allTools(deps);
+  const operations = new OperationsAgent(log, {
+    clearCaches: () => {
+      searchCache.clear();
+      listingCache.clear();
+    },
+  });
+  const tools = [
+    ...allTools(deps).map((tool) => operations.supervise(tool)),
+    buildOperationsTool(operations),
+  ];
   const server = buildServer(tools, log);
   const transport = new StdioServerTransport();
   await server.connect(transport);
   log.info({ tool_count: tools.length, debug: intent.debug }, 'server.started');
+  let shuttingDown = false;
+  const cleanup = async () => {
+    operations.close();
+    await http.close();
+    searchCache.clear();
+    listingCache.clear();
+  };
+  server.onclose = () => {
+    void cleanup();
+  };
+  const shutdown = async () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    await cleanup();
+    const deadline = setTimeout(() => process.exit(1), 5_000);
+    deadline.unref();
+    try {
+      await server.close();
+    } finally {
+      clearTimeout(deadline);
+    }
+  };
+  process.once('SIGINT', () => {
+    void shutdown();
+  });
+  process.once('SIGTERM', () => {
+    void shutdown();
+  });
 };
 
 main().catch((e: unknown) => {

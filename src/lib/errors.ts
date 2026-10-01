@@ -3,7 +3,17 @@ export type McpError =
   | { kind: 'UpstreamHTTP'; status: number; url: string; body?: string }
   | { kind: 'ParseFailed'; selector: string; url: string; cause?: string }
   | { kind: 'ValidationFailed'; field: string; message: string }
-  | { kind: 'NotImplemented'; tool: string; reason: string };
+  | { kind: 'NotImplemented'; tool: string; reason: string }
+  | { kind: 'TransportFailed'; url: string; reason: TransportFailureReason; message: string };
+
+export type TransportFailureReason =
+  'Network' | 'Timeout' | 'ResponseTooLarge' | 'QueueFull' | 'Closed' | 'Cancelled';
+
+export const transportFailed = (
+  url: string,
+  reason: TransportFailureReason,
+  message: string,
+): McpError => ({ kind: 'TransportFailed', url, reason, message });
 
 export const rateLimited = (retry_after_ms: number, source: string): McpError => ({
   kind: 'RateLimited',
@@ -41,5 +51,7 @@ export const formatError = (e: McpError): string => {
       return `Validation failed on ${e.field}: ${e.message}`;
     case 'NotImplemented':
       return `Tool ${e.tool} not implemented: ${e.reason}`;
+    case 'TransportFailed':
+      return `HTTP transport failed (${e.reason})`;
   }
 };

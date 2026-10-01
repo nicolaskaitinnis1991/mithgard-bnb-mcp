@@ -1,5 +1,10 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
+import {
+  CallToolRequestSchema,
+  ErrorCode,
+  ListToolsRequestSchema,
+  McpError,
+} from '@modelcontextprotocol/sdk/types.js';
 import { readFileSync } from 'node:fs';
 import type { ToolDefinition } from './tools/registry.js';
 import type { Logger } from 'pino';
@@ -14,6 +19,8 @@ const pkgUrl = new URL('../package.json', import.meta.url);
 const pkg = JSON.parse(readFileSync(pkgUrl, 'utf8')) as { name: string; version: string };
 
 export const buildServer = (tools: ToolDefinition[], log: Logger) => {
+  const registry = new Map(tools.map((tool) => [tool.name, tool]));
+  if (registry.size !== tools.length) throw new Error('Duplicate MCP tool names are not allowed');
   // eslint-disable-next-line @typescript-eslint/no-deprecated -- low-level Server API is required for setRequestHandler-based registration; McpServer wraps this differently.
   const server = new Server(
     { name: pkg.name, version: pkg.version },
@@ -25,14 +32,16 @@ export const buildServer = (tools: ToolDefinition[], log: Logger) => {
       name: t.name,
       description: t.description,
       inputSchema: t.inputSchema,
+      ...(t.outputSchema ? { outputSchema: t.outputSchema } : {}),
+      ...(t.annotations ? { annotations: t.annotations } : {}),
     })),
   }));
 
-  server.setRequestHandler(CallToolRequestSchema, async (req) => {
-    const tool = tools.find((t) => t.name === req.params.name);
-    if (!tool) throw new Error(`Unknown tool: ${req.params.name}`);
+  server.setRequestHandler(CallToolRequestSchema, async (req, extra) => {
+    const tool = registry.get(req.params.name);
+    if (!tool) throw new McpError(ErrorCode.InvalidParams, 'Unknown tool name');
     log.info({ tool: tool.name }, 'tool.call');
-    return tool.handler(req.params.arguments ?? {});
+    return tool.handler(req.params.arguments ?? {}, { signal: extra.signal });
   });
 
   return server;
