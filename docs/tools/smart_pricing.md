@@ -1,184 +1,103 @@
 # smart_pricing
 
-> Per-day pricing suggestions over a window, with explainable per-day reasons
-> (weekday uplift, season factor) and a summary average + total.
-> Status: **Demo (requires Airbnb Partner API)** — current implementation
-> applies deterministic weekday + seasonal factors to a per-listing base
-> price.
+Calculates bounded suggestions from supplied base prices and owner-defined factors. No price is changed and no market demand is fetched.
 
-## Purpose
+## Mode and evidence
 
-`smart_pricing` answers "what should I charge per night over the next N
-days?" with one row per date plus the reasons behind each number. Unlike
-opaque dynamic-pricing tools, every suggestion carries its drivers (e.g.
-"Weekend uplift (+25 EUR)", "High-season factor (×1.15)") so an agent can
-narrate the recommendation to the host. Typically called after
-[`host_insights`](./host_insights.md) flags pricing as too rigid, or
-chained with [`calendar_optimizer`](./calendar_optimizer.md) to fill
-specific gaps.
+`mode: "provided"` requires `host_data`. Passing data without that mode, or omitting data in that mode, fails validation; there is no fixture fallback. With `mode: "demo"` (or no mode and no data), the existing synthetic fixture runs instead.
 
-## Input schema
+Every result has `_source`, `_mock`, and `data_evidence`. Provided calculations use `_source: "provided", _mock: false`; this means calculated from caller assertions, not authenticated/imported account data. Evidence includes the caller's `as_of` timestamp, IANA `timezone`, `currency`, `complete`, and detected `missing_fields`. `complete: true` is only retained when the source asserts completeness and required calculation facts are present. Demo evidence has `as_of: null`, `complete: false`, and `missing_fields: ["synthetic_data"]`.
 
-```ts
-{
-  listing_id: string;                 // required
-  from: string;                       // ISO date "YYYY-MM-DD", inclusive
-  to: string;                         // ISO date "YYYY-MM-DD", inclusive
-}
-```
+Metadata is required in every supplied dataset. Supported currencies are EUR, GBP, USD, CAD, AUD and CHF; money supports up to two decimals, nonnegative values and a maximum of 1,000,000 per supplied amount. No currency conversion occurs. Input objects reject unknown fields; strings, arrays, dates and amounts are bounded. Outputs are validated at the MCP boundary.
 
-Source: [`src/tools/smart-pricing/schema.ts`](../../src/tools/smart-pricing/schema.ts).
+## Supplied-data contract and calculation
 
-**Horizon is capped at 30 days** (`MAX_HORIZON_DAYS` in
-[`src/mocks/smart-pricing.fixture.ts`](../../src/mocks/smart-pricing.fixture.ts)).
-A `from`→`to` span longer than 30 days is silently truncated to the first
-30 days from `from`.
+- `listing_id`: nonempty ID up to 200 characters; no hash influences provided prices.
+- `from`, `to`: inclusive real dates, ordered, at most 30 dates.
+- `host_data.nights`: at most 366 distinct nightly records; only explicitly `available` nights are priced.
+- Required `min_price`, `max_price` must be ordered. A nightly `price` takes precedence over optional explicit `base_price`. Without either, the date is skipped as `missing_price`.
+- Optional `weekday_factors`: exactly seven factors, Sunday index 0 through Saturday index 6. Optional `date_factors`: at most 30 unique `{date, factor}` records. Factors are 0.1–5; absent factors are 1.
 
-## Pricing formula (deterministic)
+Suggestion = base × weekday factor × date factor, rounded to cents and clamped to supplied bounds. Reasons state these actual supplied inputs. Booked, owner-blocked, cancelled, absent and unknown nights are not priced. `skipped_dates` distinguishes the causes. Missing baselines/unknown dates make evidence incomplete. `current` is the supplied baseline, not a read of the channel's current price. Zero baseline omits the undefined percentage delta.
 
-```
-base               = 70 + (fnv1a(listing_id) % 81)         // 70..150 EUR
-seasonal[month]    = { Jan/Feb: 0.85, Mar: 0.95, Apr: 1.05, May: 1.10,
-                       Jun/Jul: 1.20, Aug: 1.05, Sep: 1.00,
-                       Oct: 0.90, Nov: 1.10, Dec: 1.10 }
-weekday_uplift[d]  = { Sun/Mon/Tue: 0, Wed: +5, Thu: +15, Fri/Sat: +25 }
-suggested(date)    = round( (base + weekday_uplift[date.dow]) * seasonal[date.month] )
-```
+`currency` is preserved without conversion. `summary.total_revenue_estimate` sums only calculated suggestions assuming **every suggested night is booked before fees** (`estimate_basis: all_nights_booked_before_fees`); it is not an occupancy/demand/revenue forecast. Empty suggestions give total 0 and `avg_suggested: null`. In demo mode, both base and factors are synthetic.
 
-`reasons[]` per day is built from whichever factors are non-trivial.
+## Reproducible synthetic example
 
-## Output shape
-
-```jsonc
-{
-  "daily_prices": [
-    {
-      "date": "2026-06-01",
-      "suggested": 138,
-      "reasons": ["Off-peak weekday baseline", "High-season factor (×1.20)"]
-    }
-    // ... one per day, up to 30
-  ],
-  "summary": {
-    "avg_suggested": 152,
-    "total_revenue_estimate": 4560
-  },
-  "_mock": true,
-  "_pitch": "Per-day pricing with explainable factors"
-}
-```
-
-Note: `current` and `delta_pct` per day are declared in the schema as
-optional but the current fixture never emits them. A real implementation
-fed by host calendars would include them so the agent can frame "you charge
-89, suggested 119, +34%".
-
-## Example
-
-### Agent prompt
-
-> "Suggest prices for listing 12345 from June 1 through June 14, 2026."
-
-### Tool call (JSON-RPC)
+These caller facts are synthetic test data, not a real property account. Input:
 
 ```json
 {
-  "method": "tools/call",
-  "params": {
-    "name": "smart_pricing",
-    "arguments": {
-      "listing_id": "12345",
-      "from": "2026-06-01",
-      "to": "2026-06-14"
-    }
+  "mode": "provided",
+  "listing_id": "synthetic-property",
+  "from": "2026-06-01",
+  "to": "2026-06-02",
+  "host_data": {
+    "as_of": "2026-06-03T09:00:00Z",
+    "timezone": "Europe/Berlin",
+    "currency": "GBP",
+    "complete": true,
+    "nights": [
+      {
+        "date": "2026-06-01",
+        "state": "available",
+        "price": 100
+      },
+      {
+        "date": "2026-06-02",
+        "state": "booked"
+      }
+    ],
+    "min_price": 80,
+    "max_price": 120,
+    "date_factors": [
+      {
+        "date": "2026-06-01",
+        "factor": 1.25
+      }
+    ]
   }
 }
 ```
 
-### Response (representative, first few days shown)
+Selected output fields (the full result also includes evidence and other validated fields):
 
-```jsonc
+```json
 {
+  "_source": "provided",
+  "_mock": false,
+  "currency": "GBP",
   "daily_prices": [
     {
       "date": "2026-06-01",
-      "suggested": 138,
-      "reasons": ["Off-peak weekday baseline", "High-season factor (×1.20)"]
-    },
+      "current": 100,
+      "suggested": 120,
+      "delta_pct": 20
+    }
+  ],
+  "skipped_dates": [
     {
       "date": "2026-06-02",
-      "suggested": 138,
-      "reasons": ["Off-peak weekday baseline", "High-season factor (×1.20)"]
-    },
-    {
-      "date": "2026-06-03",
-      "suggested": 144,
-      "reasons": ["Weekday uplift (+5 EUR)", "High-season factor (×1.20)"]
-    },
-    {
-      "date": "2026-06-04",
-      "suggested": 156,
-      "reasons": ["Weekday uplift (+15 EUR)", "High-season factor (×1.20)"]
-    },
-    {
-      "date": "2026-06-05",
-      "suggested": 168,
-      "reasons": ["Weekend uplift (+25 EUR)", "High-season factor (×1.20)"]
-    },
-    {
-      "date": "2026-06-06",
-      "suggested": 168,
-      "reasons": ["Weekend uplift (+25 EUR)", "High-season factor (×1.20)"]
+      "reason": "booked"
     }
-    // ... 8 more days
   ],
+  "estimate_basis": "all_nights_booked_before_fees",
   "summary": {
-    "avg_suggested": 152,
-    "total_revenue_estimate": 2128
-  },
-  "_mock": true,
-  "_pitch": "Per-day pricing with explainable factors"
+    "avg_suggested": 120,
+    "total_revenue_estimate": 120
+  }
 }
 ```
 
-Exact `base` price varies per `listing_id` via hash; the same id always
-returns the same numbers.
+## External prerequisites and acceptance
 
-## Edge cases & failure modes
+Live market data, occupancy forecasting and actual channel price writes are separate integration/evaluation tasks.
 
-- **Demo data only** — `_mock: true` always set. A real implementation would
-  factor competitor live-pricing, local events, lead-time, and the listing's
-  recent booking history.
-- **Window > 30 days** → silently truncated to 30 days from `from`. No
-  warning emitted; document this in any UI that surfaces the tool.
-- **Window with `to` before `from`** → `dayDiff` returns negative, then
-  `Math.max(1, ...)` floors it to 1, producing a single-day output. Caller
-  should validate ordering.
-- **No `current` price** → fixture omits the optional `current` and
-  `delta_pct` fields (real implementation would populate them from host
-  calendar).
+- [Schema](../../src/tools/smart-pricing/schema.ts)
+- [Handler](../../src/tools/smart-pricing/handler.ts)
+- [Strict host-data contracts](../../src/host-data/contracts.ts)
+- [Local calculation engines](../../src/host-data/engines.ts)
+- [Provided-data acceptance scenarios](../../tests/integration/provided-host-data.test.ts)
+- [Saved acceptance plan](../acceptance-plan.md)
 
-## Performance characteristics
-
-- **Cache TTL**: none (pure compute).
-- **Rate-limited**: no.
-- **Typical p95 latency**: <2 ms for a 30-day window.
-
-## When to use
-
-- ✅ Best for: weekly/monthly host pricing reviews, demos of an explainable
-  pricing advisor, chaining with `calendar_optimizer` to price a specific
-  gap, integration tests of agent-driven pricing UIs.
-- ❌ Not for: real revenue management — the seasonal curve is a fixed
-  global table, not market-aware. Not for hyper-short horizons (1-2 days)
-  where dynamic competitor pricing dominates over weekday/season factors.
-
-## See also
-
-- Source: [`src/tools/smart-pricing/`](../../src/tools/smart-pricing/)
-- Schema: [`src/tools/smart-pricing/schema.ts`](../../src/tools/smart-pricing/schema.ts)
-- Fixture: [`src/mocks/smart-pricing.fixture.ts`](../../src/mocks/smart-pricing.fixture.ts)
-- Related tools: [`host_insights`](./host_insights.md),
-  [`calendar_optimizer`](./calendar_optimizer.md)
-- Mock-vs-live honesty policy:
-  [ADR-0005](../adr/0005-mock-vs-live-honesty.md)
+Automated scenarios and synthetic load are technical evidence, not human host acceptance.

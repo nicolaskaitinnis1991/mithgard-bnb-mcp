@@ -55,9 +55,12 @@ describe('tool registry — mock tools', () => {
     expect(allTools(stubDeps)).toHaveLength(9);
   });
 
-  it('every mock tool description starts with the [DEMO ...] prefix', () => {
+  it('every host tool is described as local analysis with an explicit demo fallback', () => {
     for (const t of mockTools(silentLogger())) {
-      expect(t.description).toMatch(/^\[DEMO — requires Airbnb Partner API\]/);
+      expect(t.description).toMatch(/^\[LOCAL\]/);
+      expect(t.description).toMatch(/demo/i);
+      expect(t.inputSchema.properties).toHaveProperty('host_data');
+      expect(t.inputSchema.properties).toHaveProperty('mode');
     }
   });
 

@@ -1,149 +1,93 @@
 # turnover_coordinator
 
-> Produces a turnover brief, an 8-item cleaning checklist, a crew message
-> draft, and an estimated duration for a checkout-to-checkin window.
-> Status: **Demo (requires Airbnb Partner API + cleaner-coordination
-> backend)** — current implementation returns a fixed checklist, formatted
-> brief, and a duration deterministically chosen from `listing_id`/`cleaner_id`.
+Proposes a serial task schedule using supplied duration, cleaner availability and existing assignments. Feasibility is arithmetic over caller data; no cleaner is booked or contacted.
 
-## Purpose
+## Mode and evidence
 
-`turnover_coordinator` is the operational glue between checkout and check-in.
-Given a checkout timestamp, the next check-in timestamp, and (optionally) a
-cleaner id, it produces (a) a short brief the host can paste into the
-cleaner's app, (b) a fixed 8-item checklist for the cleaner to tick through,
-(c) a crew-message-ready draft, and (d) an estimated duration in minutes.
-Typically called after [`calendar_optimizer`](./calendar_optimizer.md)
-identifies a back-to-back booking, or as a recurring per-booking task in a
-host-side automation.
+`mode: "provided"` requires `host_data`. Passing data without that mode, or omitting data in that mode, fails validation; there is no fixture fallback. With `mode: "demo"` (or no mode and no data), the existing synthetic fixture runs instead.
 
-## Input schema
+Every result has `_source`, `_mock`, and `data_evidence`. Provided calculations use `_source: "provided", _mock: false`; this means calculated from caller assertions, not authenticated/imported account data. Evidence includes the caller's `as_of` timestamp, IANA `timezone`, `currency`, `complete`, and detected `missing_fields`. `complete: true` is only retained when the source asserts completeness and required calculation facts are present. Demo evidence has `as_of: null`, `complete: false`, and `missing_fields: ["synthetic_data"]`.
 
-```ts
-{
-  listing_id: string;                            // required
-  checkout_at: string;                           // ISO datetime "YYYY-MM-DDTHH:MM..."
-  checkin_at: string;                            // ISO datetime "YYYY-MM-DDTHH:MM..."
-  cleaner_id?: string;                           // optional
-}
-```
+Metadata is required in every supplied dataset. Supported currencies are EUR, GBP, USD, CAD, AUD and CHF; money supports up to two decimals, nonnegative values and a maximum of 1,000,000 per supplied amount. No currency conversion occurs. Input objects reject unknown fields; strings, arrays, dates and amounts are bounded. Outputs are validated at the MCP boundary.
 
-Source: [`src/tools/turnover-coordinator/schema.ts`](../../src/tools/turnover-coordinator/schema.ts).
+## Supplied-data contract and calculation
 
-Datetimes only need to start with `YYYY-MM-DDTHH:MM` — timezone suffix is
-parsed but not strictly required by the regex.
+- `listing_id`: nonempty ID up to 200 characters.
+- `checkout_at`, `checkin_at`: real ISO timestamps with Z or explicit UTC offset. Check-in must follow checkout. `cleaner_id` optionally restricts candidates to that supplied cleaner.
+- `host_data.tasks`: 1–30 distinct `{id, title, duration_min}` tasks. IDs max80 characters, titles max100, each duration1–480 minutes.
+- Required `buffer_min`: 0–240. Tasks run sequentially on one proposed cleaner; parallel task execution/travel/material constraints are not inferred.
+- `cleaners`: at most20 distinct IDs, each with `available` and `assignments` arrays (at most50 positive `{start,end}` intervals each). No contact data is required.
 
-## Output shape
+Required duration is sum(task minutes) + buffer. The engine chooses the earliest fitting supplied availability window, skips conflicting assignments, and checks that the complete sequence plus buffer finishes before both availability end and check-in. A selected cleaner remains `assignment_status: proposed_only`. Source complete=false cannot yield feasible=true; absent requested cleaner, insufficient availability or conflicts can make a long overall window infeasible.
 
-```jsonc
-{
-  "brief": "Turnover for listing 12345\nCheckout: ...\nEstimated duration: 120 min\nAssigned cleaner: ...",
-  "checklist": [
-    "Strip and replace all bed linens (master + guest bedrooms)",
-    "Clean and sanitize bathrooms (toilet, shower, sink, mirrors)",
-    "Wipe kitchen surfaces, run dishwasher, restock essentials",
-    "Vacuum and mop all floors",
-    "Empty all trash bins; replace liners",
-    "Restock toiletries, towels, coffee, tea, water",
-    "Inspect for damages or missing items; photograph any issues",
-    "Final walk-through and lock-up; confirm key/lockbox status"
-  ],
-  "crew_message_draft": "Hi! Quick turnover at listing 12345:\n- Checkout ...\n- Next check-in ...\n- Estimated 120 min\nFull checklist + supplies status in the app. Reply when started/done. Thanks!",
-  "estimated_duration_min": 120,                 // 90 | 120 | 150
-  "_mock": true,
-  "_pitch": "Coordinates turnover end-to-end with crew briefing and handover checklist"
-}
-```
+Elapsed arithmetic uses timestamp instants/UTC, including offset changes at DST transitions. `scheduled_tasks`, `planned_start`, `planned_end` are ISO UTC timestamps; the end includes the buffer. `local_window` and the draft show the supplied IANA timezone. Without a fitting candidate, planned start/end and cleaner are null and scheduled_tasks is empty. Every result requires approval. Demo durations and checklists are illustrative rather than property-specific.
 
-The checklist is always the same 8 items in the same order — the demo's
-contract is that the *briefing wrapper* is dynamic, not the checklist
-contents. Duration is `90 | 120 | 150`, chosen deterministically from
-`hash(listing_id:cleaner_id || listing_id) % 3`.
+## Reproducible synthetic example
 
-## Example
-
-### Agent prompt
-
-> "Set up the turnover for listing 12345 — checkout June 12 at 11:00 UTC,
-> next check-in same day at 15:00 UTC, cleaner is crew-erin."
-
-### Tool call (JSON-RPC)
+These caller facts are synthetic test data, not a real property account. Input:
 
 ```json
 {
-  "method": "tools/call",
-  "params": {
-    "name": "turnover_coordinator",
-    "arguments": {
-      "listing_id": "12345",
-      "checkout_at": "2026-06-12T11:00:00Z",
-      "checkin_at": "2026-06-12T15:00:00Z",
-      "cleaner_id": "crew-erin"
-    }
+  "mode": "provided",
+  "listing_id": "synthetic-property",
+  "checkout_at": "2026-06-01T12:00:00+02:00",
+  "checkin_at": "2026-06-01T15:00:00+02:00",
+  "host_data": {
+    "as_of": "2026-06-03T09:00:00Z",
+    "timezone": "Europe/Berlin",
+    "currency": "EUR",
+    "complete": true,
+    "tasks": [
+      {
+        "id": "clean",
+        "title": "Clean apartment",
+        "duration_min": 120
+      }
+    ],
+    "buffer_min": 30,
+    "cleaners": [
+      {
+        "id": "synthetic-crew",
+        "available": [
+          {
+            "start": "2026-06-01T09:00:00Z",
+            "end": "2026-06-01T15:00:00Z"
+          }
+        ],
+        "assignments": []
+      }
+    ]
   }
 }
 ```
 
-### Response (representative)
+Selected output fields (the full result also includes evidence and other validated fields):
 
-```jsonc
+```json
 {
-  "brief": "Turnover for listing 12345\nCheckout: 2026-06-12 11:00 UTC → Check-in: 2026-06-12 15:00 UTC\nEstimated duration: 120 min\nAssigned cleaner: crew-erin",
-  "checklist": [
-    "Strip and replace all bed linens (master + guest bedrooms)",
-    "Clean and sanitize bathrooms (toilet, shower, sink, mirrors)",
-    "Wipe kitchen surfaces, run dishwasher, restock essentials",
-    "Vacuum and mop all floors",
-    "Empty all trash bins; replace liners",
-    "Restock toiletries, towels, coffee, tea, water",
-    "Inspect for damages or missing items; photograph any issues",
-    "Final walk-through and lock-up; confirm key/lockbox status"
-  ],
-  "crew_message_draft": "Hi! Quick turnover at listing 12345:\n- Checkout 2026-06-12 at 11:00 UTC\n- Next check-in 2026-06-12 at 15:00 UTC\n- Estimated 120 min\nFull checklist + supplies status in the app. Reply when started/done. Thanks!",
+  "_source": "provided",
+  "_mock": false,
+  "window_minutes": 180,
   "estimated_duration_min": 120,
-  "_mock": true,
-  "_pitch": "Coordinates turnover end-to-end with crew briefing and handover checklist"
+  "required_duration_min": 150,
+  "feasible": true,
+  "proposed_cleaner_id": "synthetic-crew",
+  "assignment_status": "proposed_only",
+  "planned_start": "2026-06-01T10:00:00.000Z",
+  "planned_end": "2026-06-01T12:30:00.000Z",
+  "approval_required": true
 }
 ```
 
-## Edge cases & failure modes
+## External prerequisites and acceptance
 
-- **Demo data only** — `_mock: true` always set. A real implementation would
-  pull listing-specific cleaning protocols (number of bedrooms, hot tub,
-  laundry on-site, etc.) and integrate with the cleaner's scheduling tool.
-- **`cleaner_id` omitted** → the brief explicitly flags
-  `"Cleaner: TBD — assign before crew message goes out"` instead of pretending
-  someone is assigned. The crew message draft is still returned but the
-  caller should not send it without an assignment.
-- **Tight turnover window** (e.g. 11:00 checkout → 13:00 checkin) → no
-  warning emitted in the demo. A real implementation should compare
-  duration to window and warn if the math doesn't work.
-- **Invalid datetime format** → `ValidationFailed` before the handler runs.
-- **Same `listing_id` + same `cleaner_id`** always produces the same
-  duration (deterministic seed).
+Real assignment, crew acknowledgement, travel/stock constraints, status tracking and messaging require a separately authorized provider.
 
-## Performance characteristics
+- [Schema](../../src/tools/turnover-coordinator/schema.ts)
+- [Handler](../../src/tools/turnover-coordinator/handler.ts)
+- [Strict host-data contracts](../../src/host-data/contracts.ts)
+- [Local calculation engines](../../src/host-data/engines.ts)
+- [Provided-data acceptance scenarios](../../tests/integration/provided-host-data.test.ts)
+- [Saved acceptance plan](../acceptance-plan.md)
 
-- **Cache TTL**: none (pure compute, deterministic).
-- **Rate-limited**: no.
-- **Typical p95 latency**: <1 ms.
-
-## When to use
-
-- ✅ Best for: per-booking turnover automation, sending consistent crew
-  messages, demos of operational-glue agents, integration testing of
-  scheduling UIs.
-- ❌ Not for: listing-specific cleaning protocols (it's a fixed 8-item
-  checklist). Not for window-feasibility checks (no warning if 120-min
-  duration doesn't fit the gap). Real deployment needs the listing
-  protocol + a window check.
-
-## See also
-
-- Source: [`src/tools/turnover-coordinator/`](../../src/tools/turnover-coordinator/)
-- Schema: [`src/tools/turnover-coordinator/schema.ts`](../../src/tools/turnover-coordinator/schema.ts)
-- Fixture: [`src/mocks/turnover-coordinator.fixture.ts`](../../src/mocks/turnover-coordinator.fixture.ts)
-- Related tools: [`calendar_optimizer`](./calendar_optimizer.md),
-  [`host_insights`](./host_insights.md)
-- Mock-vs-live honesty policy:
-  [ADR-0005](../adr/0005-mock-vs-live-honesty.md)
+Automated scenarios and synthetic load are technical evidence, not human host acceptance.

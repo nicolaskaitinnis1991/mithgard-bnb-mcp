@@ -61,7 +61,7 @@ describe('withTelemetry', () => {
     expect(msg).toBe('tool.error');
     expect(payload.tool).toBe('breakable');
     expect(payload.status).toBe('error');
-    expect(payload.error_kind).toBe('CustomError');
+    expect(payload.error_kind).toBe('UnexpectedError');
     expect(typeof payload.duration_ms).toBe('number');
   });
 
@@ -73,6 +73,34 @@ describe('withTelemetry', () => {
 
     const [payload] = firstCall(vi.mocked(log.info));
     expect(payload.request_id).toMatch(/^[0-9a-f]{16}$/);
+  });
+
+  it('logs returned domain errors with status=error', async () => {
+    const log = fakeLogger();
+    const wrapped = withTelemetry(log, 'upstream', () =>
+      Promise.resolve({ error: 'Unavailable', kind: 'RateLimited' }),
+    );
+    await wrapped(null);
+    const [payload, message] = firstCall(vi.mocked(log.error));
+    expect(message).toBe('tool.failed');
+    expect(payload.status).toBe('error');
+    expect(payload.error_kind).toBe('RateLimited');
+    expect(log.info).not.toHaveBeenCalled();
+  });
+
+  it('does not include raw exception messages in debug logs', async () => {
+    const log = fakeLogger();
+    const secret = 'password=secret-test-value';
+    const wrapped = withTelemetry(log, 'unsafe', () => Promise.reject(new Error(secret)), {
+      debug: true,
+    });
+    await expect(wrapped({ last_message: secret })).rejects.toThrow(secret);
+    const logged = JSON.stringify([
+      vi.mocked(log.debug).mock.calls,
+      vi.mocked(log.error).mock.calls,
+    ]);
+    expect(logged).not.toContain(secret);
+    expect(logged).toContain('Tool execution failed');
   });
 
   it('does NOT emit tool.envelope when debug is off', async () => {
@@ -87,11 +115,11 @@ describe('withTelemetry', () => {
     const wrapped = withTelemetry(
       log,
       'debug-on',
-      (_i: { email: string; id: number }) =>
+      (_i: { email: string; total: number }) =>
         Promise.resolve({ host_name: 'Nico', listing_id: '1' }),
       { debug: true },
     );
-    await wrapped({ email: 'a@b.c', id: 42 });
+    await wrapped({ email: 'a@b.c', total: 42 });
     expect(log.debug).toHaveBeenCalledTimes(1);
     const debugMock = vi.mocked(log.debug);
     const args = debugMock.mock.calls[0];
@@ -102,7 +130,7 @@ describe('withTelemetry', () => {
     ];
     expect(msg).toBe('tool.envelope');
     expect(payload.tool).toBe('debug-on');
-    expect(payload.input).toEqual({ email: '[REDACTED]', id: 42 });
-    expect(payload.output).toEqual({ host_name: '[REDACTED]', listing_id: '1' });
+    expect(payload.input).toEqual({ email: '[REDACTED]', total: 42 });
+    expect(payload.output).toEqual({ host_name: '[REDACTED]', listing_id: '[REDACTED]' });
   });
 });

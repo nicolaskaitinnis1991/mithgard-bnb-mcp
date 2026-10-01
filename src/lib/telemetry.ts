@@ -17,6 +17,25 @@ export interface TelemetryOptions {
   debug?: boolean;
 }
 
+const isFailure = (value: unknown): value is { error: string; kind: string } =>
+  value !== null &&
+  typeof value === 'object' &&
+  'error' in value &&
+  typeof value.error === 'string' &&
+  'kind' in value &&
+  typeof value.kind === 'string';
+const ERROR_KINDS = new Set([
+  'RateLimited',
+  'UpstreamHTTP',
+  'ParseFailed',
+  'ValidationFailed',
+  'NotImplemented',
+  'TransportFailed',
+  'OutputValidationFailed',
+  'UnexpectedError',
+  'Cancelled',
+]);
+
 // withTelemetry wraps a tool handler with structured logging.
 // One JSON log line is emitted to stderr per call: `tool.done` on success,
 // `tool.error` on throw. `cache_hit` (when relevant) is logged as a separate
@@ -35,6 +54,12 @@ export const withTelemetry =
     const start = Date.now();
     try {
       const out = await fn(input);
+      const failure = isFailure(out);
+      const errorKind = failure
+        ? ERROR_KINDS.has(out.kind)
+          ? out.kind
+          : 'UnexpectedError'
+        : undefined;
       if (opts.debug) {
         log.debug(
           {
@@ -46,15 +71,15 @@ export const withTelemetry =
           'tool.envelope',
         );
       }
-      log.info(
-        {
-          tool: toolName,
-          request_id,
-          duration_ms: Date.now() - start,
-          status: 'ok' as const,
-        },
-        'tool.done',
-      );
+      const event = {
+        tool: toolName,
+        request_id,
+        duration_ms: Date.now() - start,
+        status: failure ? ('error' as const) : ('ok' as const),
+        ...(errorKind ? { error_kind: errorKind } : {}),
+      };
+      if (failure) log.error(event, 'tool.failed');
+      else log.info(event, 'tool.done');
       return out;
     } catch (e) {
       if (opts.debug) {
@@ -63,7 +88,7 @@ export const withTelemetry =
             tool: toolName,
             request_id,
             input: sanitize(input),
-            error: e instanceof Error ? e.message : String(e),
+            error: 'Tool execution failed',
           },
           'tool.envelope',
         );
@@ -74,7 +99,7 @@ export const withTelemetry =
           request_id,
           duration_ms: Date.now() - start,
           status: 'error' as const,
-          error_kind: e instanceof Error ? e.constructor.name : 'Unknown',
+          error_kind: 'UnexpectedError',
         },
         'tool.error',
       );

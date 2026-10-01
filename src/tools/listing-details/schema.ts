@@ -1,20 +1,23 @@
 import { z } from 'zod';
 
-const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+import { isoDate, validateStay } from '../../lib/validation.js';
 
-export const ListingDetailsInput = z.object({
-  listing_id: z.union([z.string().min(1), z.number().int().positive()]),
-  checkin: z.string().regex(ISO_DATE).optional(),
-  checkout: z.string().regex(ISO_DATE).optional(),
-});
+export const ListingDetailsInput = z
+  .object({
+    listing_id: z.union([z.string().regex(/^\d{1,30}$/), z.number().int().positive().safe()]),
+    checkin: isoDate.optional(),
+    checkout: isoDate.optional(),
+  })
+  .strict()
+  .superRefine(validateStay);
 export type ListingDetailsInputT = z.infer<typeof ListingDetailsInput>;
 
 export const ListingFullSchema = z.object({
   id: z.string(),
   title: z.string(),
   url: z.string().url(),
-  price_per_night: z.number(),
-  currency: z.string(),
+  price_per_night: z.number().nonnegative().nullable(),
+  currency: z.string().nullable(),
   rating: z.number().optional(),
   review_count: z.number().optional(),
   host_name: z.string().optional(),
@@ -22,25 +25,25 @@ export const ListingFullSchema = z.object({
   thumbnail_url: z.string().optional(),
   description: z.string(),
   amenities: z.array(z.string()),
-  bedrooms: z.number(),
-  bathrooms: z.number(),
-  max_guests: z.number(),
+  bedrooms: z.number().nonnegative().nullable(),
+  bathrooms: z.number().nonnegative().nullable(),
+  max_guests: z.number().nonnegative().nullable(),
   check_in: z.string().optional(),
   check_out: z.string().optional(),
   house_rules: z.array(z.string()).optional(),
 });
 
 export const ReviewsSummarySchema = z.object({
-  total: z.number(),
-  average: z.number(),
+  total: z.number().nonnegative().nullable(),
+  average: z.number().nonnegative().nullable(),
   by_category: z
     .object({
-      cleanliness: z.number(),
-      accuracy: z.number(),
-      communication: z.number(),
-      location: z.number(),
-      check_in: z.number(),
-      value: z.number(),
+      cleanliness: z.number().nonnegative().nullable(),
+      accuracy: z.number().nonnegative().nullable(),
+      communication: z.number().nonnegative().nullable(),
+      location: z.number().nonnegative().nullable(),
+      check_in: z.number().nonnegative().nullable(),
+      value: z.number().nonnegative().nullable(),
     })
     .optional(),
   recent_excerpts: z.array(z.string()).optional(),
@@ -48,7 +51,7 @@ export const ReviewsSummarySchema = z.object({
 
 export const HostSummarySchema = z.object({
   name: z.string(),
-  superhost: z.boolean(),
+  superhost: z.boolean().nullable(),
   joined: z.string(),
   response_rate: z.number().optional(),
   response_time: z.string().optional(),

@@ -1,147 +1,82 @@
 # host_insights
 
-> Surfaces revenue gaps vs local competitors and concrete pricing actions for
-> a host's listing over a recent window.
-> Status: **Demo (requires Airbnb Partner API)** — current implementation
-> returns one of three deterministic fixtures based on `listing_id`.
+Calculates occupancy, recorded revenue, ADR and RevPAR from explicitly supplied nightly records. No account import, market feed or business action occurs.
 
-## Purpose
+## Mode and evidence
 
-`host_insights` is the agent's "how is my listing doing?" tool. Given a
-`listing_id` and a time window, it returns occupancy, revenue, the gap to
-local competitors, a small set of pricing recommendations, and a few prose
-insights an agent can read out to the host. It is the natural starting point
-for a host-facing conversation before drilling into
-[`smart_pricing`](./smart_pricing.md) or
-[`calendar_optimizer`](./calendar_optimizer.md).
+`mode: "provided"` requires `host_data`. Passing data without that mode, or omitting data in that mode, fails validation; there is no fixture fallback. With `mode: "demo"` (or no mode and no data), the existing synthetic fixture runs instead.
 
-## Input schema
+Every result has `_source`, `_mock`, and `data_evidence`. Provided calculations use `_source: "provided", _mock: false`; this means calculated from caller assertions, not authenticated/imported account data. Evidence includes the caller's `as_of` timestamp, IANA `timezone`, `currency`, `complete`, and detected `missing_fields`. `complete: true` is only retained when the source asserts completeness and required calculation facts are present. Demo evidence has `as_of: null`, `complete: false`, and `missing_fields: ["synthetic_data"]`.
 
-```ts
-{
-  listing_id: string;                                  // required
-  period?: "last_30d" | "last_90d" | "last_year";      // default "last_30d"
-}
-```
+Metadata is required in every supplied dataset. Supported currencies are EUR, GBP, USD, CAD, AUD and CHF; money supports up to two decimals, nonnegative values and a maximum of 1,000,000 per supplied amount. No currency conversion occurs. Input objects reject unknown fields; strings, arrays, dates and amounts are bounded. Outputs are validated at the MCP boundary.
 
-Source: [`src/tools/host-insights/schema.ts`](../../src/tools/host-insights/schema.ts).
+## Supplied-data contract and calculation
 
-## Output shape
+- `listing_id`: nonempty ID, at most 200 characters; it never influences provided metrics.
+- `host_data.from`, `to`: real dates covering 1–366 nights; `to` is exclusive. This explicit reporting range is authoritative in provided mode. Legacy `period` and `reference_date` select/demo-label fixtures only.
+- `host_data.nights`: at most 366 distinct `{date, state, price?, revenue?}` records within the reporting range. States: `available`, `booked`, `owner_block`, `cancelled`, `unknown`.
+- Optional `benchmark`: `{revenue, currency, from, to, sample_size}`. Revenue is the supplied comparison revenue per property for the same reporting period; period/currency must match exactly. No comparable listings are fetched.
 
-```jsonc
-{
-  "occupancy_rate": 0.52,                  // 0..1
-  "revenue_eur": 3120,
-  "competitor_avg_revenue_eur": 4480,
-  "delta_pct": -30.4,                      // signed
-  "pricing_recommendations": [
-    {
-      "date_range": "2026-05-15..2026-05-22",
-      "current": 89,                       // current nightly EUR
-      "suggested": 119,                    // proposed nightly EUR
-      "reason": "Mid-week dip + local trade fair drives demand"
-    }
-  ],
-  "insights": [
-    "Occupancy 30% below local benchmark — pricing is too rigid...",
-    "Competitor avg nightly: 112 EUR. You charge 89 EUR flat...",
-    "Recommend: enable smart_pricing tool for daily price tuning."
-  ],
-  "_mock": true,
-  "_pitch": "Surfaces revenue gaps and concrete pricing actions per listing"
-}
-```
+Occupancy is booked nights divided by booked + available nights. Owner blocks and cancelled records are excluded from offered nights. Revenue is summed only from booked-night `revenue`, never from advertised prices or cancelled records. ADR = recorded revenue / booked nights; RevPAR = recorded revenue / offered nights. Zero denominators produce `null`; an incomplete source or missing/unknown dates prevents aggregate metrics. Missing booked revenue leaves occupancy calculable but financial metrics `null`.
 
-## Example
+`revenue`, `adr`, `revpar` and `benchmark_revenue` use the supplied currency. Legacy `revenue_eur` and `competitor_avg_revenue_eur` aliases are `null` for non-EUR datasets. Missing benchmark means `delta_pct: null` and no market claim. No causal pricing recommendation is fabricated; `pricing_recommendations` is empty in provided mode.
 
-### Agent prompt
+## Reproducible synthetic example
 
-> "How is listing 12345 doing in the last 30 days vs the local market?"
-
-### Tool call (JSON-RPC)
+These caller facts are synthetic test data, not a real property account. Input:
 
 ```json
 {
-  "method": "tools/call",
-  "params": {
-    "name": "host_insights",
-    "arguments": {
-      "listing_id": "12345",
-      "period": "last_30d"
-    }
+  "mode": "provided",
+  "listing_id": "synthetic-property",
+  "host_data": {
+    "as_of": "2026-06-03T09:00:00Z",
+    "timezone": "Europe/Berlin",
+    "currency": "EUR",
+    "complete": true,
+    "from": "2026-06-01",
+    "to": "2026-06-03",
+    "nights": [
+      {
+        "date": "2026-06-01",
+        "state": "booked",
+        "revenue": 100
+      },
+      {
+        "date": "2026-06-02",
+        "state": "owner_block"
+      }
+    ]
   }
 }
 ```
 
-### Response (one of three deterministic fixtures: under-performing profile)
+Selected output fields (the full result also includes evidence and other validated fields):
 
-```jsonc
+```json
 {
-  "occupancy_rate": 0.52,
-  "revenue_eur": 3120,
-  "competitor_avg_revenue_eur": 4480,
-  "delta_pct": -30.4,
-  "pricing_recommendations": [
-    {
-      "date_range": "2026-05-15..2026-05-22",
-      "current": 89,
-      "suggested": 119,
-      "reason": "Mid-week dip + local trade fair drives demand"
-    },
-    {
-      "date_range": "2026-05-23..2026-05-31",
-      "current": 89,
-      "suggested": 99,
-      "reason": "Weekend uplift, competition averaging 105 EUR"
-    }
-  ],
-  "insights": [
-    "Occupancy 30% below local benchmark — pricing is too rigid for weekday/weekend split.",
-    "Competitor avg nightly: 112 EUR. You charge 89 EUR flat. Loss estimated at 1.4K EUR/30d.",
-    "Recommend: enable smart_pricing tool for daily price tuning."
-  ],
-  "_mock": true,
-  "_pitch": "Surfaces revenue gaps and concrete pricing actions per listing"
+  "_source": "provided",
+  "_mock": false,
+  "occupancy_rate": 1,
+  "revenue": 100,
+  "adr": 100,
+  "revpar": 100,
+  "available_nights": 1,
+  "occupied_nights": 1,
+  "delta_pct": null,
+  "pricing_recommendations": []
 }
 ```
 
-The fixture profile (under-performing / at-market / over-performing) is
-chosen deterministically from the `listing_id` hash, so the same id always
-returns the same numbers across calls — useful for demos and tests. Full
-fixture data: [`src/mocks/host-insights.fixture.ts`](../../src/mocks/host-insights.fixture.ts).
+## External prerequisites and acceptance
 
-## Edge cases & failure modes
+Automatic account import and independently sourced comparable revenue need an authorized provider and actual datasets.
 
-- **Demo data only** — `_mock: true` is always set. Real Partner-API
-  integration would pull the host's actual reservation history and an
-  aggregated comp-set from Airbnb's market explorer.
-- **Invalid `period`** → `ValidationFailed` returned to the caller before the
-  handler runs.
-- **Unknown `listing_id`** → still returns a fixture (the hash always maps
-  somewhere). A real implementation would return `NotImplemented` or an
-  upstream 404.
+- [Schema](../../src/tools/host-insights/schema.ts)
+- [Handler](../../src/tools/host-insights/handler.ts)
+- [Strict host-data contracts](../../src/host-data/contracts.ts)
+- [Local calculation engines](../../src/host-data/engines.ts)
+- [Provided-data acceptance scenarios](../../tests/integration/provided-host-data.test.ts)
+- [Saved acceptance plan](../acceptance-plan.md)
 
-## Performance characteristics
-
-- **Cache TTL**: none (pure compute, deterministic).
-- **Rate-limited**: no.
-- **Typical p95 latency**: <2 ms (fixture lookup).
-
-## When to use
-
-- ✅ Best for: opening a host-coaching conversation, demos of the agent's
-  pricing-advisor capability, integration testing of downstream tools that
-  consume insights output.
-- ❌ Not for: real revenue reporting, anything a host would put in their
-  books — the numbers are illustrative.
-
-## See also
-
-- Source: [`src/tools/host-insights/`](../../src/tools/host-insights/)
-- Schema: [`src/tools/host-insights/schema.ts`](../../src/tools/host-insights/schema.ts)
-- Fixture: [`src/mocks/host-insights.fixture.ts`](../../src/mocks/host-insights.fixture.ts)
-- Related tools: [`smart_pricing`](./smart_pricing.md),
-  [`calendar_optimizer`](./calendar_optimizer.md),
-  [`review_responder`](./review_responder.md)
-- Mock-vs-live honesty policy:
-  [ADR-0005](../adr/0005-mock-vs-live-honesty.md)
+Automated scenarios and synthetic load are technical evidence, not human host acceptance.

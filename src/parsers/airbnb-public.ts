@@ -16,160 +16,152 @@ export interface ListingDetailsParsed {
   host_summary: HostSummary;
 }
 
-/**
- * Parse Airbnb search results page.
- *
- * Multi-strategy: Airbnb's embedded JSON shape rotates between deploys, so we try
- * each known structure in turn:
- *   1. Modern (2026-05) — `niobeClientData[i][1].data.presentation.staysSearch.results.searchResults[]`
- *      with `__typename === 'StaySearchResult'`. ID is base64-encoded global ID
- *      `DemandStayListing:<numeric>`. Price comes from `structuredDisplayPrice.primaryLine.price`
- *      as a localized string ("€ 736").
- *   2. Legacy / synthesized — `niobeMinimalClientData` walker that recognises
- *      objects with literal `id`, `name`, `pricingQuote.rate.amount` keys.
- *
- * Both strategies are run; whichever yields ≥1 listing wins.
- */
+const record = (value: unknown): Record<string, unknown> | undefined =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+const text = (value: unknown): string => (typeof value === 'string' ? value : '');
+const number = (value: unknown): number | null =>
+  typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
+const array = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
+
+const embeddedData = (html: string): unknown => {
+  const script = cheerio.load(html)('script#data-deferred-state-0').text();
+  if (!script) throw new Error('Missing embedded Airbnb data');
+  return JSON.parse(script) as unknown;
+};
+
+/** External HTML and JSON are untrusted; malformed shapes return typed failures. */
 export const parseSearchResults = (
   html: string,
   _query: NormalizedQuery,
 ): Result<{ listings: Listing[]; total: number }, McpError> => {
-  const $ = cheerio.load(html);
-  const scriptText = $('script#data-deferred-state-0').text();
-  if (!scriptText) return err(parseFailed('script#data-deferred-state-0', 'search'));
-  let json: unknown;
   try {
-    json = JSON.parse(scriptText);
-  } catch (e) {
-    return err(parseFailed('JSON.parse', 'search', String(e)));
-  }
-
-  // Strategy 1: modern niobeClientData → StaySearchResult shape
-  const modern = parseModernSearchResults(json);
-  if (modern.length > 0) return ok({ listings: modern, total: modern.length });
-
-  // Strategy 2: legacy walker (synthesized fixture / pre-2026 deploys)
-  const legacy: Listing[] = [];
-  walkObjects(json, (obj) => {
-    if (typeof obj.id === 'string' && typeof obj.name === 'string' && obj.pricingQuote) {
-      const pq = obj.pricingQuote as { rate?: { amount?: number; currency?: string } };
+    const json = embeddedData(html);
+    const modern = parseModernSearchResults(json);
+    if (modern !== null) return ok({ listings: modern, total: modern.length });
+    const legacy: Listing[] = [];
+    walkObjects(json, (obj) => {
+      const pq = record(obj.pricingQuote);
+      if (
+        typeof obj.id !== 'string' ||
+        !/^\d+$/.test(obj.id) ||
+        typeof obj.name !== 'string' ||
+        !pq
+      )
+        return;
+      const rate = record(pq.rate);
       legacy.push({
         id: obj.id,
         title: obj.name,
         url: `https://www.airbnb.com/rooms/${obj.id}`,
-        price_per_night: pq.rate?.amount ?? 0,
-        currency: pq.rate?.currency ?? 'EUR',
-        location: typeof obj.city === 'string' ? obj.city : 'unknown',
+        price_per_night: number(rate?.amount),
+        currency: text(rate?.currency) || null,
+        price_basis: 'night',
+        location: text(obj.city) || 'unknown',
       });
-    }
-  });
-  return ok({ listings: legacy, total: legacy.length });
+    });
+    if (legacy.length === 0) return err(parseFailed('searchResults/pricingQuote', 'search'));
+    return ok({ listings: legacy, total: legacy.length });
+  } catch (cause) {
+    return err(parseFailed('embedded JSON/shape', 'search', String(cause)));
+  }
 };
 
-/**
- * Parse Airbnb listing details page.
- *
- * Multi-strategy: try modern stayProductDetailPage first, fall back to legacy walker.
- */
 export const parseListingDetails = (
   html: string,
   listingId: string,
 ): Result<ListingDetailsParsed, McpError> => {
-  const $ = cheerio.load(html);
-  const scriptText = $('script#data-deferred-state-0').text();
-  if (!scriptText) return err(parseFailed('script#data-deferred-state-0', 'listing'));
-  let json: unknown;
   try {
-    json = JSON.parse(scriptText);
-  } catch (e) {
-    return err(parseFailed('JSON.parse', 'listing', String(e)));
+    const json = embeddedData(html);
+    const modern = parseModernListingDetails(json, listingId);
+    return modern !== null ? ok(modern) : parseLegacyListingDetails(json, listingId);
+  } catch (cause) {
+    return err(parseFailed('embedded JSON/shape', 'listing', String(cause)));
   }
-
-  // Strategy 1: modern stayProductDetailPage
-  const modern = parseModernListingDetails(json, listingId);
-  if (modern !== null) return ok(modern);
-
-  // Strategy 2: legacy bookingPdpSections walker
-  return parseLegacyListingDetails(json, listingId);
 };
 
-// ─── Strategy 1: Modern (live 2026-05) ──────────────────────────────────────
-
-const parseModernSearchResults = (json: unknown): Listing[] => {
-  // Path: niobeClientData[i][1].data.presentation.staysSearch.results.searchResults[]
-  const ncd = drill(json, ['niobeClientData']);
-  if (!Array.isArray(ncd)) return [];
+const parseModernSearchResults = (json: unknown): Listing[] | null => {
+  const entries = array(drill(json, ['niobeClientData']));
+  let found = false;
   const listings: Listing[] = [];
-  for (const entry of ncd) {
+  for (const entry of entries) {
     if (!Array.isArray(entry) || entry.length < 2) continue;
-    const payload: unknown = entry[1];
-    const sr = drill(payload, ['data', 'presentation', 'staysSearch', 'results', 'searchResults']);
-    if (!Array.isArray(sr)) continue;
-    for (const r of sr) {
-      const parsed = parseModernSearchResult(r);
-      if (parsed !== null) listings.push(parsed);
+    const results = drill(entry[1], [
+      'data',
+      'presentation',
+      'staysSearch',
+      'results',
+      'searchResults',
+    ]);
+    if (!Array.isArray(results)) continue;
+    found = true;
+    for (const value of results) {
+      const listing = parseModernSearchResult(value);
+      if (listing !== null) listings.push(listing);
     }
+    // A recognized, explicitly empty result set differs from an unknown page shape.
+    if (results.length > 0 && listings.length === 0) return null;
   }
-  return listings;
+  return found ? listings : null;
 };
 
-const parseModernSearchResult = (r: unknown): Listing | null => {
-  if (typeof r !== 'object' || r === null) return null;
-  const obj = r as Record<string, unknown>;
-  // Listing ID lives in demandStayListing.id (base64-encoded "DemandStayListing:<num>")
-  const dsl = obj.demandStayListing as Record<string, unknown> | undefined;
-  const encodedId = dsl && typeof dsl.id === 'string' ? dsl.id : undefined;
-  if (encodedId === undefined) return null;
-  const numericId = decodeListingId(encodedId);
-  if (numericId === null) return null;
-
+const parseModernSearchResult = (value: unknown): Listing | null => {
+  const obj = record(value);
+  if (!obj) return null;
+  const dsl = record(obj.demandStayListing);
+  const id = decodeListingId(text(dsl?.id));
+  if (id === null) return null;
   const title =
-    (obj.nameLocalized as { localizedStringWithTranslationPreference?: string } | undefined)
-      ?.localizedStringWithTranslationPreference ??
-    (typeof obj.title === 'string' ? obj.title : undefined) ??
-    (
-      dsl?.description as
-        | { name?: { localizedStringWithTranslationPreference?: string } }
-        | undefined
-    )?.name?.localizedStringWithTranslationPreference ??
-    '';
-
-  const sdp = obj.structuredDisplayPrice as
-    | { primaryLine?: { price?: string; accessibilityLabel?: string } }
-    | undefined;
-  const priceStr = sdp?.primaryLine?.price ?? sdp?.primaryLine?.accessibilityLabel ?? '';
-  const { amount, currency } = parsePriceString(priceStr);
-
-  // Rating from avgRatingLocalized like "4.72 (212)"
-  let rating: number | undefined;
-  let reviewCount: number | undefined;
-  if (typeof obj.avgRatingLocalized === 'string') {
-    const m = /^([\d.]+)\s*\((\d+)\)/.exec(obj.avgRatingLocalized);
-    if (m?.[1] !== undefined && m[2] !== undefined) {
-      rating = Number(m[1]);
-      reviewCount = Number(m[2]);
-    } else {
-      const num = Number(obj.avgRatingLocalized);
-      if (!Number.isNaN(num)) rating = num;
+    text(drill(obj, ['nameLocalized', 'localizedStringWithTranslationPreference'])) ||
+    text(obj.title) ||
+    text(drill(dsl, ['description', 'name', 'localizedStringWithTranslationPreference']));
+  if (!title.trim()) return null;
+  const sdp = record(obj.structuredDisplayPrice);
+  const line = record(sdp?.primaryLine);
+  const displayed = parsePriceString(text(line?.price) || text(line?.accessibilityLabel));
+  const qualifier = `${text(line?.qualifier)} ${text(line?.accessibilityLabel)}`;
+  const basis = /total|gesamt|insgesamt/i.test(qualifier)
+    ? 'stay_total'
+    : /night|nacht|nuit|noche|notte/i.test(qualifier)
+      ? 'night'
+      : 'unknown';
+  let nightly = basis === 'night' ? displayed.amount : null;
+  let currency = displayed.currency;
+  // Airbnb's primary line can be the entire stay, including fees. Never label it nightly.
+  for (const group of array(drill(sdp, ['explanationData', 'priceDetails']))) {
+    for (const item of array(record(group)?.items)) {
+      const description = text(record(item)?.description);
+      const match = /^\s*\d+\s+(?:nights?|nächte|nacht|nuits?|noches?|notti)\s*[x×]\s*(.+)$/i.exec(
+        description,
+      );
+      if (!match?.[1]) continue;
+      const parsed = parsePriceString(match[1]);
+      if (parsed.amount !== null) {
+        nightly = parsed.amount;
+        currency = parsed.currency ?? currency;
+      }
     }
   }
-
-  // Location from title prefix, demandStayListing, or structuredContent
-  const subtitleStr = typeof obj.title === 'string' ? obj.title : '';
-  // r.title is e.g. "Apartment in Berlin" → strip "X in "
-  const locMatch = /\bin\s+(.+)$/i.exec(subtitleStr);
-  const location = locMatch?.[1] ?? 'unknown';
-
   const out: Listing = {
-    id: numericId,
+    id,
     title,
-    url: `https://www.airbnb.com/rooms/${numericId}`,
-    price_per_night: amount,
+    url: `https://www.airbnb.com/rooms/${id}`,
+    price_per_night: nightly,
     currency,
-    location,
+    display_price: displayed.amount,
+    price_basis: basis,
+    location: /\bin\s+(.+)$/i.exec(text(obj.title))?.[1] ?? 'unknown',
   };
-  if (rating !== undefined) out.rating = rating;
-  if (reviewCount !== undefined) out.review_count = reviewCount;
+  const ratingMatch = /^([\d.,]+)\s*\((\d+)\)/.exec(text(obj.avgRatingLocalized));
+  if (ratingMatch?.[1] !== undefined && ratingMatch[2] !== undefined) {
+    const rating = Number(ratingMatch[1].replace(',', '.'));
+    if (rating >= 0 && rating <= 5) out.rating = rating;
+    out.review_count = Number(ratingMatch[2]);
+  } else if (text(obj.avgRatingLocalized)) {
+    const rating = Number(text(obj.avgRatingLocalized).replace(',', '.'));
+    if (Number.isFinite(rating) && rating >= 0 && rating <= 5) out.rating = rating;
+  }
   return out;
 };
 
@@ -177,297 +169,188 @@ const parseModernListingDetails = (
   json: unknown,
   listingId: string,
 ): ListingDetailsParsed | null => {
-  const ncd = drill(json, ['niobeClientData']);
-  if (!Array.isArray(ncd)) return null;
-
-  // Find the entry whose payload has stayProductDetailPage
-  let pdp: Record<string, unknown> | null = null;
-  for (const entry of ncd) {
+  let pdp: Record<string, unknown> | undefined;
+  for (const entry of array(drill(json, ['niobeClientData']))) {
     if (!Array.isArray(entry) || entry.length < 2) continue;
-    const candidate = drill(entry[1], ['data', 'presentation', 'stayProductDetailPage']);
-    if (candidate && typeof candidate === 'object') {
-      pdp = candidate as Record<string, unknown>;
-      break;
-    }
+    pdp = record(drill(entry[1], ['data', 'presentation', 'stayProductDetailPage']));
+    if (pdp) break;
   }
-  if (pdp === null) return null;
-
-  const sectionsContainer = pdp.sections as Record<string, unknown> | undefined;
-  if (!sectionsContainer) return null;
-  const meta = sectionsContainer.metadata as Record<string, unknown> | undefined;
-  const sectionsArr = sectionsContainer.sections;
-  if (!Array.isArray(sectionsArr)) return null;
-
-  const findSection = (id: string): Record<string, unknown> | undefined => {
-    for (const s of sectionsArr) {
-      if (typeof s === 'object' && s !== null) {
-        const so = s as Record<string, unknown>;
-        if (so.sectionId === id) {
-          const sec = so.section;
-          return typeof sec === 'object' && sec !== null
-            ? (sec as Record<string, unknown>)
-            : undefined;
-        }
-      }
+  if (!pdp) return null;
+  const container = record(pdp.sections);
+  if (!container || !Array.isArray(container.sections)) return null;
+  const section = (id: string): Record<string, unknown> | undefined => {
+    const found = container.sections as unknown[];
+    for (const candidate of found) {
+      const obj = record(candidate);
+      if (obj?.sectionId === id) return record(obj.section);
     }
     return undefined;
   };
-
-  const sharing = (meta?.sharingConfig ?? {}) as Record<string, unknown>;
-  const sharingTitle = typeof sharing.title === 'string' ? sharing.title : '';
-  const titleSection = findSection('TITLE_DEFAULT');
-  const title =
-    (typeof titleSection?.title === 'string' && titleSection.title) ||
-    (typeof sharing.propertyType === 'string' ? sharing.propertyType : '') ||
-    sharingTitle;
-
-  // Description
-  const descSection = findSection('DESCRIPTION_DEFAULT');
-  const htmlDesc = descSection?.htmlDescription as { htmlText?: string } | undefined;
-  const description = stripHtml(htmlDesc?.htmlText ?? '');
-
-  // Bedrooms / bathrooms parsed from sharingConfig.title (e.g. "... · 2 bedrooms · 2 beds · 1 shared bath")
-  const bedrooms = parseFirstInt(sharingTitle, /(\d+)\s+bedroom/i) ?? 0;
-  const bathrooms = parseFirstInt(sharingTitle, /([\d.]+)\s+(?:shared\s+)?bath/i) ?? 0;
-  const max_guests = typeof sharing.personCapacity === 'number' ? sharing.personCapacity : 0;
-  const location = typeof sharing.location === 'string' ? sharing.location : 'unknown';
-
-  // Amenities — flatten previewAmenitiesGroups[*].amenities[*].title where available
-  const amSection = findSection('AMENITIES_DEFAULT');
-  const groups =
-    (amSection?.seeAllAmenitiesGroups as unknown[] | undefined) ??
-    (amSection?.previewAmenitiesGroups as unknown[] | undefined) ??
-    [];
+  const sharing = record(drill(container, ['metadata', 'sharingConfig']));
+  const sharingTitle = text(sharing?.title);
   const amenities: string[] = [];
-  for (const g of groups) {
-    if (typeof g !== 'object' || g === null) continue;
-    const ams = (g as Record<string, unknown>).amenities;
-    if (!Array.isArray(ams)) continue;
-    for (const a of ams) {
-      if (typeof a !== 'object' || a === null) continue;
-      const ao = a as Record<string, unknown>;
-      if (ao.available === false) continue;
-      if (typeof ao.title === 'string') amenities.push(ao.title);
+  const amenitySection = section('AMENITIES_DEFAULT');
+  const groups = Array.isArray(amenitySection?.seeAllAmenitiesGroups)
+    ? amenitySection.seeAllAmenitiesGroups
+    : array(amenitySection?.previewAmenitiesGroups);
+  for (const group of groups) {
+    for (const value of array(record(group)?.amenities)) {
+      const amenity = record(value);
+      if (amenity && amenity.available !== false && typeof amenity.title === 'string')
+        amenities.push(amenity.title);
     }
   }
-
-  // Price — listing detail pages typically don't embed a per-night price up-front.
-  // Fall back to 0 with currency EUR; consumers should call search for live pricing.
-  const price_per_night = 0;
-  const currency = 'EUR';
-
-  // Reviews
-  const rvSection = findSection('REVIEWS_DEFAULT');
-  const overallRating =
-    typeof rvSection?.overallRating === 'number'
-      ? rvSection.overallRating
-      : typeof sharing.starRating === 'number'
-        ? sharing.starRating
-        : 0;
-  const reviewCount =
-    typeof sharing.reviewCount === 'number'
-      ? sharing.reviewCount
-      : typeof rvSection?.overallCount === 'number'
-        ? rvSection.overallCount
-        : 0;
-  const ratingsArr = Array.isArray(rvSection?.ratings) ? rvSection.ratings : [];
-  const catLookup: Record<string, number> = {};
-  for (const cr of ratingsArr) {
-    if (typeof cr !== 'object' || cr === null) continue;
-    const cro = cr as Record<string, unknown>;
-    if (typeof cro.categoryType !== 'string') continue;
-    const lr = typeof cro.localizedRating === 'string' ? Number(cro.localizedRating) : NaN;
-    if (!Number.isNaN(lr)) catLookup[cro.categoryType] = lr;
+  const review = section('REVIEWS_DEFAULT');
+  const cats: Record<string, number | null> = {};
+  for (const value of array(review?.ratings)) {
+    const category = record(value);
+    if (typeof category?.categoryType !== 'string') continue;
+    const n = Number(text(category.localizedRating).replace(',', '.'));
+    cats[category.categoryType] =
+      text(category.localizedRating) && Number.isFinite(n) && n >= 0 && n <= 5 ? n : null;
   }
   const reviews_summary: ReviewsSummary = {
-    total: reviewCount,
-    average: overallRating,
-    by_category: {
-      cleanliness: catLookup.CLEANLINESS ?? 0,
-      accuracy: catLookup.ACCURACY ?? 0,
-      communication: catLookup.COMMUNICATION ?? 0,
-      location: catLookup.LOCATION ?? 0,
-      check_in: catLookup.CHECKIN ?? 0,
-      value: catLookup.VALUE ?? 0,
-    },
+    total: number(sharing?.reviewCount) ?? number(review?.overallCount),
+    average: number(review?.overallRating) ?? number(sharing?.starRating),
   };
-
-  // Host
-  const hostSection = findSection('MEET_YOUR_HOST');
-  const cardData = (hostSection?.cardData ?? {}) as Record<string, unknown>;
-  const hostName = typeof cardData.name === 'string' ? cardData.name : '';
-  const isSuperhost = cardData.isSuperhost === true;
-  // Years hosting → joined offset; we only have the value, store as-is in joined
-  const stats = Array.isArray(cardData.stats) ? cardData.stats : [];
-  let yearsHosting: string | undefined;
-  for (const s of stats) {
-    if (typeof s !== 'object' || s === null) continue;
-    const so = s as Record<string, unknown>;
-    if (so.type === 'YEARS_HOSTING' && typeof so.value === 'string') yearsHosting = so.value;
+  if (Object.keys(cats).length)
+    reviews_summary.by_category = {
+      cleanliness: cats.CLEANLINESS ?? null,
+      accuracy: cats.ACCURACY ?? null,
+      communication: cats.COMMUNICATION ?? null,
+      location: cats.LOCATION ?? null,
+      check_in: cats.CHECKIN ?? null,
+      value: cats.VALUE ?? null,
+    };
+  const card = record(section('MEET_YOUR_HOST')?.cardData);
+  let joined = '';
+  for (const value of array(card?.stats)) {
+    const stat = record(value);
+    if (stat?.type === 'YEARS_HOSTING' && typeof stat.value === 'string')
+      joined = `${stat.value} years hosting`;
   }
-  const host_summary: HostSummary = {
-    name: hostName,
-    superhost: isSuperhost,
-    joined: yearsHosting !== undefined ? `${yearsHosting} years hosting` : '',
-  };
-
   const listing: ListingFull = {
     id: listingId,
-    title: typeof title === 'string' ? title : '',
+    title: text(section('TITLE_DEFAULT')?.title) || text(sharing?.propertyType) || sharingTitle,
     url: `https://www.airbnb.com/rooms/${listingId}`,
-    price_per_night,
-    currency,
-    location,
-    description,
+    price_per_night: null,
+    currency: null,
+    location: text(sharing?.location) || 'unknown',
+    description: stripHtml(
+      text(drill(section('DESCRIPTION_DEFAULT'), ['htmlDescription', 'htmlText'])),
+    ),
     amenities,
-    bedrooms,
-    bathrooms,
-    max_guests,
+    bedrooms: parseFirstNumber(sharingTitle, /(\d+)\s+bedroom/i),
+    bathrooms: parseFirstNumber(sharingTitle, /([\d.,]+)\s+(?:shared\s+)?bath/i),
+    max_guests: number(sharing?.personCapacity),
   };
-
-  return { listing, reviews_summary, host_summary };
+  return {
+    listing,
+    reviews_summary,
+    host_summary: {
+      name: text(card?.name),
+      superhost: typeof card?.isSuperhost === 'boolean' ? card.isSuperhost : null,
+      joined,
+    },
+  };
 };
-
-// ─── Strategy 2: Legacy / synthesized walker ─────────────────────────────────
 
 const parseLegacyListingDetails = (
   json: unknown,
   listingId: string,
 ): Result<ListingDetailsParsed, McpError> => {
-  const root = drill(json, ['niobeMinimalClientData']);
-  const pdp = findFirstKey(root, 'bookingPdpSections');
+  const pdp = findFirstKey(drill(json, ['niobeMinimalClientData']), 'bookingPdpSections');
   if (pdp === undefined) return err(parseFailed('bookingPdpSections', 'listing'));
-
-  const listingNode = findFirstKey(pdp, 'listing');
-  const reviewsNode = findFirstKey(pdp, 'reviewsModule');
-  const hostNode = findFirstKey(pdp, 'host');
-
-  if (
-    typeof listingNode !== 'object' ||
-    listingNode === null ||
-    typeof reviewsNode !== 'object' ||
-    reviewsNode === null ||
-    typeof hostNode !== 'object' ||
-    hostNode === null
-  ) {
-    return err(parseFailed('listing/reviewsModule/host', 'listing'));
-  }
-
-  const l = listingNode as Record<string, unknown>;
-  const r = reviewsNode as Record<string, unknown>;
-  const h = hostNode as Record<string, unknown>;
-
-  const id = typeof l.id === 'string' ? l.id : listingId;
-  const title = typeof l.name === 'string' ? l.name : '';
-  const description = typeof l.description === 'string' ? l.description : '';
-  const bedrooms = typeof l.bedrooms === 'number' ? l.bedrooms : 0;
-  const bathrooms = typeof l.bathrooms === 'number' ? l.bathrooms : 0;
-  const max_guests = typeof l.personCapacity === 'number' ? l.personCapacity : 0;
-  const amenities = Array.isArray(l.amenities)
-    ? (l.amenities as unknown[]).filter((a): a is string => typeof a === 'string')
-    : [];
-  const pq = (l.pricingQuote ?? {}) as { rate?: { amount?: number; currency?: string } };
-  const price_per_night = pq.rate?.amount ?? 0;
-  const currency = pq.rate?.currency ?? 'EUR';
-  const location = typeof l.city === 'string' ? l.city : 'unknown';
-
+  const l = record(findFirstKey(pdp, 'listing'));
+  const r = record(findFirstKey(pdp, 'reviewsModule'));
+  const h = record(findFirstKey(pdp, 'host'));
+  if (!l || !r || !h) return err(parseFailed('listing/reviewsModule/host', 'listing'));
+  const id = typeof l.id === 'string' && /^\d+$/.test(l.id) ? l.id : listingId;
+  const rate = record(drill(l, ['pricingQuote', 'rate']));
   const listing: ListingFull = {
     id,
-    title,
+    title: text(l.name),
     url: `https://www.airbnb.com/rooms/${id}`,
-    price_per_night,
-    currency,
-    location,
-    description,
-    amenities,
-    bedrooms,
-    bathrooms,
-    max_guests,
+    price_per_night: number(rate?.amount),
+    currency: text(rate?.currency) || null,
+    location: text(l.city) || 'unknown',
+    description: text(l.description),
+    amenities: array(l.amenities).filter((a): a is string => typeof a === 'string'),
+    bedrooms: number(l.bedrooms),
+    bathrooms: number(l.bathrooms),
+    max_guests: number(l.personCapacity),
   };
-
-  const cats = (r.categoryRatings ?? {}) as Record<string, unknown>;
-  const num = (k: string): number => (typeof cats[k] === 'number' ? cats[k] : 0);
-  const recent = Array.isArray(r.recentExcerpts)
-    ? (r.recentExcerpts as unknown[]).filter((s): s is string => typeof s === 'string')
-    : [];
   const reviews_summary: ReviewsSummary = {
-    total: typeof r.reviewsCount === 'number' ? r.reviewsCount : 0,
-    average: typeof r.overallRating === 'number' ? r.overallRating : 0,
-    by_category: {
-      cleanliness: num('cleanliness'),
-      accuracy: num('accuracy'),
-      communication: num('communication'),
-      location: num('location'),
-      check_in: num('checkin'),
-      value: num('value'),
-    },
-    ...(recent.length > 0 ? { recent_excerpts: recent } : {}),
+    total: number(r.reviewsCount),
+    average: number(r.overallRating),
   };
-
-  const langs = Array.isArray(h.languages)
-    ? (h.languages as unknown[]).filter((s): s is string => typeof s === 'string')
-    : [];
+  const cats = record(r.categoryRatings);
+  if (cats)
+    reviews_summary.by_category = {
+      cleanliness: number(cats.cleanliness),
+      accuracy: number(cats.accuracy),
+      communication: number(cats.communication),
+      location: number(cats.location),
+      check_in: number(cats.checkin),
+      value: number(cats.value),
+    };
+  const excerpts = array(r.recentExcerpts).filter((v): v is string => typeof v === 'string');
+  if (excerpts.length) reviews_summary.recent_excerpts = excerpts;
   const host_summary: HostSummary = {
-    name: typeof h.name === 'string' ? h.name : '',
-    superhost: h.isSuperhost === true,
-    joined: typeof h.joinedDate === 'string' ? h.joinedDate : '',
-    ...(typeof h.responseRate === 'number' ? { response_rate: h.responseRate } : {}),
-    ...(typeof h.responseTime === 'string' ? { response_time: h.responseTime } : {}),
-    ...(langs.length > 0 ? { languages: langs } : {}),
+    name: text(h.name),
+    superhost: typeof h.isSuperhost === 'boolean' ? h.isSuperhost : null,
+    joined: text(h.joinedDate),
   };
-
+  if (typeof h.responseRate === 'number') host_summary.response_rate = h.responseRate;
+  if (typeof h.responseTime === 'string') host_summary.response_time = h.responseTime;
+  const languages = array(h.languages).filter((v): v is string => typeof v === 'string');
+  if (languages.length) host_summary.languages = languages;
   return ok({ listing, reviews_summary, host_summary });
 };
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-/**
- * Decode Airbnb's base64-wrapped global IDs.
- * "RGVtYW5kU3RheUxpc3Rpbmc6MTg2NzE3OQ==" → "1867179"
- * (raw decodes to "DemandStayListing:1867179")
- */
 const decodeListingId = (encoded: string): string | null => {
-  try {
-    const decoded = Buffer.from(encoded, 'base64').toString('utf-8');
-    const m = /(?:DemandStayListing|StayListing):(\d+)/.exec(decoded);
-    if (m?.[1] !== undefined) return m[1];
-    // If it's already numeric, keep it
-    if (/^\d+$/.test(encoded)) return encoded;
-    return null;
-  } catch {
-    return null;
+  if (/^\d+$/.test(encoded)) return encoded;
+  const decoded = Buffer.from(encoded, 'base64').toString('utf-8');
+  return /^(?:DemandStayListing|StayListing):(\d+)$/.exec(decoded)?.[1] ?? null;
+};
+
+/** Parse decimal comma/dot and common currency markers without inventing a price. */
+const parsePriceString = (s: string): { amount: number | null; currency: string | null } => {
+  const currencies: [RegExp, string][] = [
+    [/€|\bEUR\b/i, 'EUR'],
+    [/£|\bGBP\b/i, 'GBP'],
+    [/\bUSD\b|US\$/i, 'USD'],
+    [/\bCAD\b|CA\$|C\$/i, 'CAD'],
+    [/\bAUD\b|AU\$|A\$/i, 'AUD'],
+    [/\bJPY\b|¥/i, 'JPY'],
+    [/\bCHF\b/i, 'CHF'],
+  ];
+  const currency = currencies.find(([pattern]) => pattern.test(s))?.[1] ?? null;
+  const match = /\d[\d.,\s\u00a0\u202f']*/.exec(s);
+  if (!match) return { amount: null, currency };
+  let normalized = match[0].replace(/[\s\u00a0\u202f']/g, '');
+  const dot = normalized.lastIndexOf('.');
+  const comma = normalized.lastIndexOf(',');
+  if (dot >= 0 && comma >= 0) {
+    const decimal = dot > comma ? '.' : ',';
+    const thousands = decimal === '.' ? ',' : '.';
+    normalized = normalized.split(thousands).join('').replace(decimal, '.');
+  } else if (dot >= 0 || comma >= 0) {
+    const separator = dot >= 0 ? '.' : ',';
+    const pieces = normalized.split(separator);
+    normalized =
+      pieces.length === 2 && (pieces[1]?.length ?? 0) <= 2
+        ? normalized.replace(separator, '.')
+        : pieces.join('');
   }
+  const amount = Number(normalized);
+  return { amount: Number.isFinite(amount) && amount >= 0 ? amount : null, currency };
 };
 
-/**
- * Parse a localized price string like "€ 736", "$1,250", "£99" into amount + ISO currency.
- * Falls back to amount=0, currency=EUR if no digits found.
- */
-const parsePriceString = (s: string): { amount: number; currency: string } => {
-  if (!s) return { amount: 0, currency: 'EUR' };
-  const trimmed = s.replace(/\s+/g, '');
-  // Currency: first non-digit, non-comma, non-period, non-minus run
-  let currency = 'EUR';
-  if (trimmed.includes('€') || /\bEUR\b/i.test(s)) currency = 'EUR';
-  else if (trimmed.includes('$') || /\bUSD\b/i.test(s)) currency = 'USD';
-  else if (trimmed.includes('£') || /\bGBP\b/i.test(s)) currency = 'GBP';
-  else if (trimmed.includes('¥') || /\bJPY\b/i.test(s)) currency = 'JPY';
-  // Amount: longest digit-run with optional commas/period as thousands/decimal
-  const m = /([\d.,]+)/.exec(s);
-  if (m?.[1] === undefined) return { amount: 0, currency };
-  // Normalise: strip commas (thousands sep) — assume period is decimal
-  const cleaned = m[1].replace(/,/g, '');
-  const amount = Number(cleaned);
-  return { amount: Number.isFinite(amount) ? amount : 0, currency };
+const parseFirstNumber = (s: string, re: RegExp): number | null => {
+  const match = re.exec(s)?.[1];
+  return match === undefined ? null : number(Number(match.replace(',', '.')));
 };
-
-const parseFirstInt = (s: string, re: RegExp): number | null => {
-  const m = s.match(re);
-  if (m?.[1] === undefined) return null;
-  const n = Number(m[1]);
-  return Number.isFinite(n) ? Math.round(n) : null;
-};
-
 const stripHtml = (s: string): string =>
   s
     .replace(/<br\s*\/?>/gi, '\n')

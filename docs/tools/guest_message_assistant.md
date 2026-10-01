@@ -1,145 +1,80 @@
 # guest_message_assistant
 
-> Drafts three host-voiced replies (short / friendly / formal) to a guest
-> message, with a recommended index. Always requires host approval before
-> sending.
-> Status: **Demo (requires Airbnb Partner API)** — current implementation
-> detects topic by keyword and returns templated drafts.
+Builds three EN/DE draft replies from supplied property facts and policy. Multiple recognized topics are handled together; no message is sent.
 
-## Purpose
+## Mode and evidence
 
-`guest_message_assistant` is the safest of the host-workflow demo tools:
-given the most recent guest message, it returns three pre-written reply
-options keyed to a detected topic (wifi, check-in, late arrival,
-cancellation, pets, or a generic fallback) in three tones. It never sends
-anything — `approval_required: true` is hard-coded, and the recommended
-index just biases the host toward a tone match. A real implementation would
-use Airbnb's Messaging API to actually deliver the chosen reply.
+`mode: "provided"` requires `host_data`. Passing data without that mode, or omitting data in that mode, fails validation; there is no fixture fallback. With `mode: "demo"` (or no mode and no data), the existing synthetic fixture runs instead.
 
-## Input schema
+Every result has `_source`, `_mock`, and `data_evidence`. Provided calculations use `_source: "provided", _mock: false`; this means calculated from caller assertions, not authenticated/imported account data. Evidence includes the caller's `as_of` timestamp, IANA `timezone`, `currency`, `complete`, and detected `missing_fields`. `complete: true` is only retained when the source asserts completeness and required calculation facts are present. Demo evidence has `as_of: null`, `complete: false`, and `missing_fields: ["synthetic_data"]`.
 
-```ts
-{
-  thread_id: string;                                          // required
-  last_message: string;                                       // required, non-empty
-  host_voice?: "casual" | "professional" | "warm";            // default "warm"
-}
-```
+Metadata is required in every supplied dataset. Supported currencies are EUR, GBP, USD, CAD, AUD and CHF; money supports up to two decimals, nonnegative values and a maximum of 1,000,000 per supplied amount. No currency conversion occurs. Input objects reject unknown fields; strings, arrays, dates and amounts are bounded. Outputs are validated at the MCP boundary.
 
-Source: [`src/tools/guest-message-assistant/schema.ts`](../../src/tools/guest-message-assistant/schema.ts).
+## Supplied-data contract and calculation
 
-## Output shape
+- `thread_id`: nonempty ID up to 200 characters; `last_message`: 1–16,000 trimmed characters.
+- `host_voice`: `casual`, `warm` (default), `professional`.
+- `host_data.language`: `en` or `de` (required).
+- Optional facts: `policy.pets_allowed`, `wifi: {ssid, password}`, `checkin_time` (`HH:MM` in the supplied timezone), `arrival_instructions`, `late_arrival_allowed`, `pet_fee`, `cancellation_policy`.
+- `access_details_allowed: true` is required before WLAN credentials or arrival instructions can be included. The flag is a caller assertion, not independent booking authentication. Passwords are never copied into `data_evidence`.
 
-```jsonc
-{
-  "suggestions": [
-    { "tone": "short",    "text": "..." },
-    { "tone": "friendly", "text": "..." },
-    { "tone": "formal",   "text": "..." }
-  ],
-  "recommended_index": 1,        // 0..2; chosen by host_voice
-  "approval_required": true,     // always true — hard gate
-  "_mock": true,
-  "_pitch": "Drafts host-voiced replies with approval gate"
-}
-```
+Finite patterns recognize safety, wifi, check-in, late arrival, cancellation and pet topics. Safety signals appear first and set `needs_escalation: true`. A guest claim cannot override supplied pet policy. Missing facts/permission are listed in `missing_context` and drafted as requests for confirmation. Unknown topics and some mixed unsupported clauses require a personal host response. Detection is non-exhaustive and cannot reliably interpret arbitrary language, sarcasm, negation or complete conversation history; `limitations` explains this. Three tones do not imply three different factual answers. Every draft has `approval_required: true`.
 
-`recommended_index` is `0` for `casual`, `1` for `warm`, `2` for
-`professional`. Always exactly 3 suggestions.
+## Reproducible synthetic example
 
-## Example
-
-### Agent prompt
-
-> "A guest just asked for the wifi password — draft me a reply in my normal
-> warm tone."
-
-### Tool call (JSON-RPC)
+These caller facts are synthetic test data, not a real property account. Input:
 
 ```json
 {
-  "method": "tools/call",
-  "params": {
-    "name": "guest_message_assistant",
-    "arguments": {
-      "thread_id": "thread-abc",
-      "last_message": "Hi, what is the wifi password?",
-      "host_voice": "warm"
-    }
+  "mode": "provided",
+  "thread_id": "synthetic-thread",
+  "last_message": "What is the wifi password, and may I bring a dog?",
+  "host_data": {
+    "as_of": "2026-06-03T09:00:00Z",
+    "timezone": "Europe/Berlin",
+    "currency": "EUR",
+    "complete": true,
+    "language": "en",
+    "policy": {
+      "pets_allowed": false
+    },
+    "wifi": {
+      "ssid": "synthetic-network",
+      "password": "synthetic-access"
+    },
+    "access_details_allowed": false
   }
 }
 ```
 
-### Response
+Selected output fields (the full result also includes evidence and other validated fields):
 
-```jsonc
+```json
 {
-  "suggestions": [
-    {
-      "tone": "short",
-      "text": "Wifi: \"BnBGuest\" / Password: \"welcome2026\". Router by the entrance."
-    },
-    {
-      "tone": "friendly",
-      "text": "Hi! The wifi network is \"BnBGuest\" and the password is \"welcome2026\". The router is right by the entrance — let me know if anything is unclear!"
-    },
-    {
-      "tone": "formal",
-      "text": "Dear guest, please find the wifi credentials below: SSID \"BnBGuest\", password \"welcome2026\". The router is located at the entrance area. Kind regards."
-    }
+  "_source": "provided",
+  "_mock": false,
+  "topics": [
+    "wifi",
+    "pet"
   ],
-  "recommended_index": 1,
+  "needs_escalation": false,
+  "missing_context": [
+    "access_details_permission"
+  ],
   "approval_required": true,
-  "_mock": true,
-  "_pitch": "Drafts host-voiced replies with approval gate"
+  "recommended_index": 1
 }
 ```
 
-Topic detection: case-insensitive keyword scan against the last message.
-Keywords (per topic) live in
-[`src/mocks/guest-message-assistant.fixture.ts`](../../src/mocks/guest-message-assistant.fixture.ts):
+## External prerequisites and acceptance
 
-- `wifi`: "wifi", "wlan", "internet"
-- `checkin`: "check-in", "checkin", "check in", "einchecken"
-- `late`: "late", "spät", "verspät", "delay"
-- `cancel`: "cancel", "storno", "refund", "rückerstattung"
-- `pet`: "pet", "hund", "katze", "dog", "cat"
+Authenticating a reservation and sending a reply need an authorized messaging/provider integration. Open-ended language quality needs separate evaluation.
 
-No match → `default` topic (generic "I'll get back to you").
+- [Schema](../../src/tools/guest-message-assistant/schema.ts)
+- [Handler](../../src/tools/guest-message-assistant/handler.ts)
+- [Strict host-data contracts](../../src/host-data/contracts.ts)
+- [Local calculation engines](../../src/host-data/engines.ts)
+- [Provided-data acceptance scenarios](../../tests/integration/provided-host-data.test.ts)
+- [Saved acceptance plan](../acceptance-plan.md)
 
-## Edge cases & failure modes
-
-- **Demo data only** — `_mock: true` always set. Real version would call the
-  Airbnb Messaging API and offer to actually send the chosen suggestion.
-- **PII in `last_message`** — logger redacts `*.message_text` by default
-  (see [`src/config/logger.ts`](../../src/config/logger.ts)). The tool itself
-  echoes nothing of the message back in the output.
-- **Multilingual message that matches multiple topics** → first match wins
-  (in declared order: wifi → checkin → late → cancel → pet).
-- **No topic match** → `default` topic returns generic acknowledgement, not
-  an error.
-
-## Performance characteristics
-
-- **Cache TTL**: none.
-- **Rate-limited**: no.
-- **Typical p95 latency**: <1 ms (pure string scan + template lookup).
-
-## When to use
-
-- ✅ Best for: pre-drafting replies the host can approve in one tap, demos of
-  approval-gated agent flows, integration into a host inbox UI.
-- ❌ Not for: anything resembling auto-send. `approval_required` exists
-  precisely to prevent that. Also not for novel/edge-case messages that don't
-  fit one of the six template topics — a real LLM-backed implementation
-  belongs there.
-
-## See also
-
-- Source: [`src/tools/guest-message-assistant/`](../../src/tools/guest-message-assistant/)
-- Schema: [`src/tools/guest-message-assistant/schema.ts`](../../src/tools/guest-message-assistant/schema.ts)
-- Fixture: [`src/mocks/guest-message-assistant.fixture.ts`](../../src/mocks/guest-message-assistant.fixture.ts)
-- Related tools: [`booking_request_triage`](./booking_request_triage.md),
-  [`review_responder`](./review_responder.md)
-- Mock-vs-live honesty policy:
-  [ADR-0005](../adr/0005-mock-vs-live-honesty.md)
+Automated scenarios and synthetic load are technical evidence, not human host acceptance.

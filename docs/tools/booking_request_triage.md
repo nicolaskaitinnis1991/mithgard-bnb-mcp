@@ -1,177 +1,88 @@
 # booking_request_triage
 
-> Risk-scores a booking request from guest profile + trip facts, with
-> auditable reasoning and red/green flags. Never auto-acts without host
-> approval.
-> Status: **Demo (requires Airbnb Partner API)** — current implementation
-> computes a deterministic score from explicit signals.
+Checks explicit property rules against a requested stay. Provided mode returns auditable policy checks, not a pseudo-precise guest trust score.
 
-## Purpose
+## Mode and evidence
 
-`booking_request_triage` lets a host (or a host-side agent) get a quick
-read on whether a new booking request looks safe to accept, risky enough
-to manually review, or bad enough to decline. The score, recommendation,
-red flags, and green flags are produced from explicit inputs — no opaque
-model — so a host can audit every reason. Even when the recommendation is
-`auto_accept` or `auto_decline`, downstream code is expected to gate on
-host confirmation; the tool never side-effects.
+`mode: "provided"` requires `host_data`. Passing data without that mode, or omitting data in that mode, fails validation; there is no fixture fallback. With `mode: "demo"` (or no mode and no data), the existing synthetic fixture runs instead.
 
-## Input schema
+Every result has `_source`, `_mock`, and `data_evidence`. Provided calculations use `_source: "provided", _mock: false`; this means calculated from caller assertions, not authenticated/imported account data. Evidence includes the caller's `as_of` timestamp, IANA `timezone`, `currency`, `complete`, and detected `missing_fields`. `complete: true` is only retained when the source asserts completeness and required calculation facts are present. Demo evidence has `as_of: null`, `complete: false`, and `missing_fields: ["synthetic_data"]`.
 
-```ts
-{
-  thread_id: string;                  // required
-  guest_profile: {
-    joined: string;                   // ISO date "YYYY-MM-DD"
-    reviews: number;                  // int >= 0
-    rating?: number;                  // 0..5 if present
-    verified: boolean;                // ID verified by Airbnb
-  },
-  trip: {
-    adults: number;                   // int >= 1
-    children: number;                 // int >= 0
-    pets: boolean;
-    nights: number;                   // int >= 1
-    reason?: string;                  // free-form trip purpose
-  }
-}
-```
+Metadata is required in every supplied dataset. Supported currencies are EUR, GBP, USD, CAD, AUD and CHF; money supports up to two decimals, nonnegative values and a maximum of 1,000,000 per supplied amount. No currency conversion occurs. Input objects reject unknown fields; strings, arrays, dates and amounts are bounded. Outputs are validated at the MCP boundary.
 
-Source: [`src/tools/booking-request-triage/schema.ts`](../../src/tools/booking-request-triage/schema.ts).
+## Supplied-data contract and calculation
 
-## Scoring (deterministic, fully auditable)
+- `thread_id`: nonempty ID up to 200 characters.
+- `guest_profile`: `joined` real date, `reviews` 0–100,000 integer, `verified` boolean, optional `rating` 0–5. Joined dates after the UTC reference date fail validation. These are caller assertions, not an identity verification performed here.
+- `trip`: `adults` 1–100, `children` 0–100, `pets` boolean, `nights` 1–365, optional `reason` up to 4,000 characters.
+- `reference_date`: optional date; provided default is the UTC date of `host_data.as_of`.
+- Optional `host_data.policy` fields: `max_guests`, `min_nights`, `pets_allowed`, `events_allowed`. Optional `events_requested` states actual event context.
 
-Start at 50 (neutral). Lower score = safer.
+Capacity includes adults + children. Any failed rule has precedence over profile history and produces `decline_after_review`. Unknown required rules or event context, ambiguous/negated event text, and incomplete source data produce `review`; all known passing rules produce `accept_after_review`. No recommendation executes a booking decision. `approval_required` is always true; `risk_score` is null and `score_basis` is `explicit_policy_checks`.
 
-| Signal                                       | Score delta |
-|----------------------------------------------|-------------|
-| Account age ≥ 3 years                        | −15         |
-| Account age < 6 months                       | +20         |
-| ≥ 5 prior reviews                            | −15         |
-| 0 prior reviews                              | +15         |
-| Verified ID                                  | −10         |
-| Unverified ID                                | +10         |
-| Avg host rating ≥ 4.8                        | −5          |
-| Avg host rating < 4.0                        | +15         |
-| Large party (adults + children ≥ 6)          | +5          |
-| Single-night stay                            | +10         |
-| Trip reason provided (>10 chars)             | −5          |
+Event terms in free text are conservative concern signals. Explicit event requests cannot be negated away. Contradictory/negated text is uncertain, never a policy pass. These patterns are not a reliable natural-language classifier. A long trip reason gives no trust bonus. Legacy demo scores remain illustrative and cannot validate listing rules.
 
-Score is clamped to 0..100. Recommendation:
+## Reproducible synthetic example
 
-- score ≤ 25 → `auto_accept`
-- score ≥ 75 → `auto_decline`
-- else → `review`
-
-Full implementation: [`src/mocks/booking-request-triage.fixture.ts`](../../src/mocks/booking-request-triage.fixture.ts).
-
-## Output shape
-
-```jsonc
-{
-  "risk_score": 30,                                // int 0..100
-  "recommendation": "review",                      // auto_accept | review | auto_decline
-  "reasoning": ["Account age 1.4 years.", "..."],  // neutral observations
-  "red_flags": ["Identity not verified."],         // risk-up signals
-  "green_flags": ["5 prior reviews."],             // risk-down signals
-  "_mock": true,
-  "_pitch": "Risk-scores guests with auditable reasoning, never auto-acts without approval"
-}
-```
-
-## Example
-
-### Agent prompt
-
-> "I got a booking request for a one-night stay from a guest who joined last
-> month with no reviews. Should I worry?"
-
-### Tool call (JSON-RPC)
+These caller facts are synthetic test data, not a real property account. Input:
 
 ```json
 {
-  "method": "tools/call",
-  "params": {
-    "name": "booking_request_triage",
-    "arguments": {
-      "thread_id": "thread-bnb-9912",
-      "guest_profile": {
-        "joined": "2026-04-01",
-        "reviews": 0,
-        "verified": false
-      },
-      "trip": {
-        "adults": 2,
-        "children": 0,
-        "pets": false,
-        "nights": 1
-      }
-    }
+  "mode": "provided",
+  "thread_id": "synthetic-thread",
+  "guest_profile": {
+    "joined": "2018-01-01",
+    "reviews": 100,
+    "rating": 4.99,
+    "verified": true
+  },
+  "trip": {
+    "adults": 20,
+    "children": 0,
+    "pets": false,
+    "nights": 3
+  },
+  "host_data": {
+    "as_of": "2026-06-03T09:00:00Z",
+    "timezone": "Europe/Berlin",
+    "currency": "EUR",
+    "complete": true,
+    "policy": {
+      "max_guests": 4,
+      "min_nights": 2,
+      "pets_allowed": false,
+      "events_allowed": false
+    },
+    "events_requested": false
   }
 }
 ```
 
-### Response
+Selected output fields (the full result also includes evidence and other validated fields):
 
-Score build-up (relative to 2026-05-03 reference date):
-50 base + 20 (account <6mo) + 15 (0 reviews) + 10 (unverified) + 10 (1-night) = 105 → clamped to 100.
-
-```jsonc
+```json
 {
-  "risk_score": 100,
-  "recommendation": "auto_decline",
-  "reasoning": [],
+  "_source": "provided",
+  "_mock": false,
+  "risk_score": null,
+  "score_basis": "explicit_policy_checks",
+  "recommendation": "decline_after_review",
   "red_flags": [
-    "Account younger than 6 months (0.08 yr).",
-    "No prior reviews on Airbnb.",
-    "Identity not verified.",
-    "Single-night stay (party-risk pattern)."
+    "Rule failed: capacity"
   ],
-  "green_flags": [],
-  "_mock": true,
-  "_pitch": "Risk-scores guests with auditable reasoning, never auto-acts without approval"
+  "approval_required": true
 }
 ```
 
-## Edge cases & failure modes
+## External prerequisites and acceptance
 
-- **Demo data only** — `_mock: true` always set. A real implementation would
-  pull guest profile via Partner API and could incorporate Airbnb's own trust
-  signals.
-- **Score saturation** — clamped to 0..100 at both ends, so extreme
-  combinations don't blow past the bounds.
-- **`rating` omitted** → no contribution either way (neutral).
-- **No reason provided** → no green flag, no penalty.
-- **The recommendation is a recommendation only** — downstream code MUST gate
-  any actual accept/decline on host confirmation. The "auto" in
-  `auto_accept` / `auto_decline` refers to the recommendation, not to
-  side-effects.
+Source authenticity, actual booking decisions and account operations require an authorized booking integration.
 
-## Performance characteristics
+- [Schema](../../src/tools/booking-request-triage/schema.ts)
+- [Handler](../../src/tools/booking-request-triage/handler.ts)
+- [Strict host-data contracts](../../src/host-data/contracts.ts)
+- [Local calculation engines](../../src/host-data/engines.ts)
+- [Provided-data acceptance scenarios](../../tests/integration/provided-host-data.test.ts)
+- [Saved acceptance plan](../acceptance-plan.md)
 
-- **Cache TTL**: none (pure compute).
-- **Rate-limited**: no.
-- **Typical p95 latency**: <1 ms.
-
-## When to use
-
-- ✅ Best for: triage queues, agent-driven host coaching ("here's why this
-  request scored 70"), policy demos showing auditable scoring, integration
-  testing of approval workflows.
-- ❌ Not for: any auto-decision pipeline that bypasses host approval.
-  Discrimination risk is real — see
-  [`docs/limitations.md`](../limitations.md). Real-world deployment requires
-  policy review.
-
-## See also
-
-- Source: [`src/tools/booking-request-triage/`](../../src/tools/booking-request-triage/)
-- Schema: [`src/tools/booking-request-triage/schema.ts`](../../src/tools/booking-request-triage/schema.ts)
-- Fixture / scoring source:
-  [`src/mocks/booking-request-triage.fixture.ts`](../../src/mocks/booking-request-triage.fixture.ts)
-- Related tools: [`guest_message_assistant`](./guest_message_assistant.md),
-  [`host_insights`](./host_insights.md)
-- Mock-vs-live honesty policy:
-  [ADR-0005](../adr/0005-mock-vs-live-honesty.md)
-- Limitations / discrimination caveat:
-  [`docs/limitations.md`](../limitations.md)
+Automated scenarios and synthetic load are technical evidence, not human host acceptance.

@@ -13,6 +13,18 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/).
 
 ## [Unreleased]
 
+- Seven supplied-data host engines with explicit provenance, missing-field evidence and rule-based DE/EN drafts.
+- Bounded host_workflow plan/preflight/execute/verify with partial progress, approval propagation and cancellation.
+- Serialized cache/output budgets, local-vs-upstream quota/deadline distinctions, circuit epochs, health freshness and actual EOF cleanup.
+- Machine-produced acceptance, immutable offline container testing, all-tool synthetic load and content/function inventories.
+
+- Harden public price evidence, input bounds, dates and currency-scoped caches.
+- Remove fictional guest access details and require approval for demo recommendations.
+- Publish generated MCP contracts, validate outputs, support cancellation and redact debug data.
+- Add a local operations supervisor, bounded HTTP lifecycle and initialized client/container smoke.
+- Move to Node 24 and Vitest 5, refresh dependency lockfile and add synthetic fault/load verification.
+- Replace current docs and generate an indexed source/Markdown inventory. Public output fields may now be null; demo recommendation labels have changed. This remains alpha.
+
 ## [0.1.0-alpha.1] — 2026-05-04
 
 Production-readiness pass on top of `0.1.0-alpha`. No behavioural changes for end

@@ -46,7 +46,7 @@
             <h1>The host-side Airbnb MCP server <em>that didn't exist yet.</em></h1>
             <p class="lede">
               Open source. Audit-ready. Written by a Superhost, for hosts.
-              Nine tools that let any MCP-aware agent — Claude, Cursor, custom rigs — read public
+              Ten tools that let any MCP-aware agent — Claude, Cursor, custom rigs — read public
               Airbnb data and reason about a host's calendar, pricing, messaging, and turnover.
             </p>
             <div class="badges">
@@ -78,7 +78,7 @@
       <section id="install" class="install">
         <div class="container">
           <h2>Quick install</h2>
-          <p class="section-lede">Three steps. No accounts. Public data tools work out of the box.</p>
+          <p class="section-lede">Three steps. No accounts. Use Node 24. Public-page availability can change.</p>
           <ol class="install-steps">
             <li>
               <span class="step-num">1</span>
@@ -113,7 +113,7 @@ npm ci &amp;&amp; npm run build</code></pre>
                 <p class="step-title">Restart Claude Desktop and ask a question</p>
                 <p class="step-note">
                   Try: <em>"Search Airbnb listings in Berlin for 2 adults next weekend."</em>
-                  Claude will pick the <code>airbnb_search</code> tool and return real results.
+                  The client can call <code>airbnb_search</code>; blocked or changed public pages return an explicit error.
                 </p>
               </div>
             </li>
@@ -123,10 +123,9 @@ npm ci &amp;&amp; npm run build</code></pre>
 
       <section id="tools" class="tools">
         <div class="container">
-          <h2>Nine tools</h2>
+          <h2>Ten tools</h2>
           <p class="section-lede">
-            Two run live against public Airbnb data today. Seven are demo-grade with realistic
-            fixtures, ready to flip on the day Airbnb's Partner API access lands.
+            Two read public Airbnb pages. Seven use synthetic fixtures. A local operations status tool reports observed calls.
           </p>
           <ul class="tool-grid">
             <li class="tool-card tool-live">
@@ -141,7 +140,7 @@ npm ci &amp;&amp; npm run build</code></pre>
                 <code class="tool-name">airbnb_listing_details</code>
                 <span class="tool-pill tool-pill-live">live</span>
               </div>
-              <p>Full listing detail: amenities, capacity, host card, reviews summary.</p>
+              <p>Supported public facts: amenities, capacity, host card and review summary. Missing facts remain unknown.</p>
             </li>
             <li class="tool-card tool-demo">
               <div class="tool-head">
@@ -162,7 +161,7 @@ npm ci &amp;&amp; npm run build</code></pre>
                 <code class="tool-name">booking_request_triage</code>
                 <span class="tool-pill tool-pill-demo">demo</span>
               </div>
-              <p>Risk-scores a booking 0–100 with auditable reasons. Auto-accept / review / decline.</p>
+              <p>Risk-scores a booking 0–100 with auditable reasons. Recommendations require host review and approval.</p>
             </li>
             <li class="tool-card tool-demo">
               <div class="tool-head">
@@ -192,6 +191,10 @@ npm ci &amp;&amp; npm run build</code></pre>
               </div>
               <p>Cleaning brief, 8-item checklist, crew message, estimated duration per turnover.</p>
             </li>
+            <li class="tool-card tool-demo">
+              <div class="tool-head"><code class="tool-name">operations_status</code><span class="tool-pill tool-pill-demo">local</span></div>
+              <p>Observed counters and limited automatic failure containment; no guarantee of live availability.</p>
+            </li>
           </ul>
         </div>
       </section>
@@ -210,19 +213,15 @@ npm ci &amp;&amp; npm run build</code></pre>
           <div id="why">
             <h2>Why this exists</h2>
             <p>
-              I host on Airbnb (Superhost). I also build software. Every tool that
-              <em>could</em> save me hours per week — pricing assistant, gap optimizer,
-              guest-message drafter — either doesn't exist, lives behind a $79/mo SaaS, or
-              gives me no audit trail.
+              I host on Airbnb. I also build software. I want host workflows such as pricing suggestions, calendar planning and guest drafts to be inspectable and usable through a common tool interface.
             </p>
             <p>
-              MCP makes this fixable for the first time. One small open-source server,
+              MCP provides a shared interface for these workflows. One small open-source server,
               one host's calendar, one agent that reasons about both.
             </p>
             <p>
               The seven demo tools are the bet: when an Airbnb Partner API key lands,
-              they flip from fixture-backed to live in one afternoon. The interface
-              is already designed.
+              they require an authenticated adapter, verified provider contracts and end-to-end tests. The current interfaces are documented.
             </p>
           </div>
         </div>
@@ -236,8 +235,8 @@ npm ci &amp;&amp; npm run build</code></pre>
             access for MCP servers — please reach out.
           </p>
           <div class="contact-row">
-            <a class="btn btn-primary" href="mailto:nicolaskaitinnis1991@gmail.com">
-              nicolaskaitinnis1991@gmail.com
+            <a class="btn btn-primary" href="mailto:nico@mithgard.ai">
+              nico@mithgard.ai
             </a>
             <a class="btn btn-ghost" href="https://github.com/nicolaskaitinnis1991/mithgard-bnb-mcp" rel="noopener" target="_blank">
               github.com/.../mithgard-bnb-mcp ↗

@@ -1,146 +1,96 @@
 # calendar_optimizer
 
-> Surfaces 3-5 specific calendar gaps within a horizon and proposes a concrete
-> action per gap (discount / relax min-stay / block).
-> Status: **Demo (requires Airbnb Partner API)** — current implementation
-> generates deterministic gaps from the `listing_id`/`horizon_days` hash.
+Finds contiguous runs of explicitly available nights and real minimum-stay conflicts in supplied calendar data. No calendar is synchronized or changed.
 
-## Purpose
+## Mode and evidence
 
-`calendar_optimizer` answers "where am I leaving money on the table in the
-next 30/60/90 days?". It returns a small set of unbooked windows with a
-nightly-cost estimate per window and an action recommendation. The agent
-uses the output to push the host toward decisions — drop the price, relax
-the 3-night minimum, or just block the date if the host has personal use.
-Naturally chains with [`smart_pricing`](./smart_pricing.md) (to price the
-gap days specifically) or [`host_insights`](./host_insights.md) (to
-benchmark whether the gaps are an outlier).
+`mode: "provided"` requires `host_data`. Passing data without that mode, or omitting data in that mode, fails validation; there is no fixture fallback. With `mode: "demo"` (or no mode and no data), the existing synthetic fixture runs instead.
 
-## Input schema
+Every result has `_source`, `_mock`, and `data_evidence`. Provided calculations use `_source: "provided", _mock: false`; this means calculated from caller assertions, not authenticated/imported account data. Evidence includes the caller's `as_of` timestamp, IANA `timezone`, `currency`, `complete`, and detected `missing_fields`. `complete: true` is only retained when the source asserts completeness and required calculation facts are present. Demo evidence has `as_of: null`, `complete: false`, and `missing_fields: ["synthetic_data"]`.
 
-```ts
-{
-  listing_id: string;                                // required
-  horizon_days?: 30 | 60 | 90;                       // default 30
-}
-```
+Metadata is required in every supplied dataset. Supported currencies are EUR, GBP, USD, CAD, AUD and CHF; money supports up to two decimals, nonnegative values and a maximum of 1,000,000 per supplied amount. No currency conversion occurs. Input objects reject unknown fields; strings, arrays, dates and amounts are bounded. Outputs are validated at the MCP boundary.
 
-`horizon_days` is constrained to exactly three literal values.
+## Supplied-data contract and calculation
 
-Source: [`src/tools/calendar-optimizer/schema.ts`](../../src/tools/calendar-optimizer/schema.ts).
+- `listing_id`: nonempty ID up to 200 characters.
+- `reference_date`: optional real date; provided default is the UTC date of `host_data.as_of`.
+- `horizon_days`: 30 (default), 60 or 90; dates are calendar date keys in the source's timezone, without shifting their labels.
+- `host_data.nights`: at most 366 distinct `{date, state, price?, revenue?}` records. `min_nights`: optional minimum stay, 1–365.
 
-## Output shape
+Only `available` creates a run. Booked/owner-blocked dates stop runs; absent/unknown/cancelled dates remain unknown and never become availability. A run bounded on both sides by actual booked dates is `orphan_gap`; otherwise it is `open_run`. `end` is exclusive. A run shorter than the supplied minimum stay yields `min_stay_conflict: true` and `suggestion: min_stay_relax`; missing rule means `null`/`review`, adequate length means `false`/`none`.
 
-```jsonc
-{
-  "gaps": [
-    {
-      "start": "2026-05-10",
-      "end": "2026-05-12",
-      "nights": 2,
-      "cost_estimate_eur": 196,
-      "suggestion": "discount"        // discount | min_stay_relax | block
-    }
-  ],
-  "potential_recovery_eur": 1240,     // sum of cost_estimate_eur across gaps
-  "_mock": true,
-  "_pitch": "Surfaces calendar gaps and concrete actions to recover lost nights"
-}
-```
+`opportunity_amount` sums only supplied nightly prices within that run, or is null if any price is missing. `opportunity_total` is null when the source/calendar is incomplete or any gap price is missing. It is conditional full-occupancy opportunity before fees, never observed loss or recoverable revenue. The legacy EUR aliases (`cost_estimate_eur`, `potential_recovery_eur`) are null for other currencies. No synthetic discounts, blocks or rates are introduced in provided mode.
 
-Number of gaps: `3 + (hash(listing_id:horizon_days) % 3)` → always 3-5.
-Each gap's `nights` is 1-4, `nightly` estimate 90-121 EUR, `suggestion`
-cycles through `discount → min_stay_relax → discount → block → min_stay_relax`.
+## Reproducible synthetic example
 
-## Example
-
-### Agent prompt
-
-> "Show me the gaps in the next 30 days for listing 12345 and what to do
-> about them."
-
-### Tool call (JSON-RPC)
+These caller facts are synthetic test data, not a real property account. Input:
 
 ```json
 {
-  "method": "tools/call",
-  "params": {
-    "name": "calendar_optimizer",
-    "arguments": {
-      "listing_id": "12345",
-      "horizon_days": 30
-    }
+  "mode": "provided",
+  "listing_id": "synthetic-property",
+  "reference_date": "2026-06-01",
+  "horizon_days": 30,
+  "host_data": {
+    "as_of": "2026-06-03T09:00:00Z",
+    "timezone": "Europe/Berlin",
+    "currency": "EUR",
+    "complete": true,
+    "min_nights": 3,
+    "nights": [
+      {
+        "date": "2026-06-01",
+        "state": "booked"
+      },
+      {
+        "date": "2026-06-02",
+        "state": "available",
+        "price": 100
+      },
+      {
+        "date": "2026-06-03",
+        "state": "available",
+        "price": 100
+      },
+      {
+        "date": "2026-06-04",
+        "state": "booked"
+      }
+    ]
   }
 }
 ```
 
-### Response (representative — exact values depend on `listing_id` hash)
+Selected output fields (the full result also includes evidence and other validated fields):
 
-```jsonc
+```json
 {
+  "_source": "provided",
+  "_mock": false,
   "gaps": [
     {
-      "start": "2026-05-10",
-      "end": "2026-05-12",
+      "start": "2026-06-02",
+      "end": "2026-06-04",
       "nights": 2,
-      "cost_estimate_eur": 196,
-      "suggestion": "discount"
-    },
-    {
-      "start": "2026-05-18",
-      "end": "2026-05-22",
-      "nights": 4,
-      "cost_estimate_eur": 416,
-      "suggestion": "min_stay_relax"
-    },
-    {
-      "start": "2026-05-27",
-      "end": "2026-05-28",
-      "nights": 1,
-      "cost_estimate_eur": 101,
-      "suggestion": "discount"
+      "gap_kind": "orphan_gap",
+      "min_stay_conflict": true,
+      "suggestion": "min_stay_relax",
+      "opportunity_amount": 200
     }
   ],
-  "potential_recovery_eur": 713,
-  "_mock": true,
-  "_pitch": "Surfaces calendar gaps and concrete actions to recover lost nights"
+  "opportunity_total": null
 }
 ```
 
-## Edge cases & failure modes
+## External prerequisites and acceptance
 
-- **Demo data only** — `_mock: true` always set. Real implementation would
-  read the host's actual blocked/unbooked dates from the Calendar API and
-  compute recovery against the host's listed nightly price.
-- **`horizon_days` other than 30/60/90** → `ValidationFailed` returned
-  before the handler runs.
-- **All dates booked in real world** → the demo will still emit 3-5
-  fixture gaps (it doesn't see real bookings). Real version would return
-  `gaps: []` with `potential_recovery_eur: 0`.
-- **`suggestion: block`** is intentionally in the rotation to remind hosts
-  that "do nothing / take the night for myself" is a valid answer too.
+The example deliberately supplies only four of thirty dates; evidence lists calendar_coverage and complete=false. Automatic calendar import/change needs an authorized provider.
 
-## Performance characteristics
+- [Schema](../../src/tools/calendar-optimizer/schema.ts)
+- [Handler](../../src/tools/calendar-optimizer/handler.ts)
+- [Strict host-data contracts](../../src/host-data/contracts.ts)
+- [Local calculation engines](../../src/host-data/engines.ts)
+- [Provided-data acceptance scenarios](../../tests/integration/provided-host-data.test.ts)
+- [Saved acceptance plan](../acceptance-plan.md)
 
-- **Cache TTL**: none (pure compute, deterministic).
-- **Rate-limited**: no.
-- **Typical p95 latency**: <1 ms.
-
-## When to use
-
-- ✅ Best for: a host-coaching nudge ("you have 4 nights open next week —
-  here's what to do"), chaining into `smart_pricing` to price those specific
-  days, end-to-end agent demos that combine reasoning across tools.
-- ❌ Not for: real availability data (no live calendar). Not for sub-daily
-  granularity. Not for very long horizons (>90 days; intentionally capped).
-
-## See also
-
-- Source: [`src/tools/calendar-optimizer/`](../../src/tools/calendar-optimizer/)
-- Schema: [`src/tools/calendar-optimizer/schema.ts`](../../src/tools/calendar-optimizer/schema.ts)
-- Fixture: [`src/mocks/calendar-optimizer.fixture.ts`](../../src/mocks/calendar-optimizer.fixture.ts)
-- Related tools: [`smart_pricing`](./smart_pricing.md),
-  [`host_insights`](./host_insights.md),
-  [`turnover_coordinator`](./turnover_coordinator.md)
-- Mock-vs-live honesty policy:
-  [ADR-0005](../adr/0005-mock-vs-live-honesty.md)
+Automated scenarios and synthetic load are technical evidence, not human host acceptance.

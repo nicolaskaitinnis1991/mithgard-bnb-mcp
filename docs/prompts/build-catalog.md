@@ -1,3 +1,5 @@
+> Historical May 2026 material. Claims, counts and workflows below are not current verification evidence. See [the current README](../../README.md) and [October verification](../readiness-2026-10-01.md). No outreach or deployment is authorized by this file.
+
 # Mithgard BnB MCP — Build-Katalog (Implementations-Plan)
 
 > **Für agentenbasierte Worker:** ERFORDERLICHE SUB-SKILL: Nutze `superpowers:subagent-driven-development` (empfohlen) oder `superpowers:executing-plans`, um diesen Plan Task für Task zu implementieren. Schritte verwenden Checkbox-Syntax (`- [ ]`) zum Tracking.

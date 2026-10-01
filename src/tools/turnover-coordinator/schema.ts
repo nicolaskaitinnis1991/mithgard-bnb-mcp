@@ -1,21 +1,54 @@
 import { z } from 'zod';
+import {
+  TurnoverData,
+  ResultFields,
+  validateMode,
+  validateResult,
+} from '../../host-data/contracts.js';
 
-const ISO_DATETIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;
+import { boundedId, isoDatetime } from '../../lib/validation.js';
 
-export const TurnoverInput = z.object({
-  listing_id: z.string().min(1),
-  checkout_at: z.string().regex(ISO_DATETIME),
-  checkin_at: z.string().regex(ISO_DATETIME),
-  cleaner_id: z.string().optional(),
-});
+export const TurnoverInput = z
+  .object({
+    mode: z.enum(['demo', 'provided']).optional(),
+    host_data: TurnoverData.optional(),
+    listing_id: boundedId,
+    checkout_at: isoDatetime,
+    checkin_at: isoDatetime,
+    cleaner_id: boundedId.optional(),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (Date.parse(value.checkin_at) <= Date.parse(value.checkout_at))
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['checkin_at'],
+        message: 'Checkin must be after checkout',
+      });
+  })
+  .superRefine(validateMode);
 export type TurnoverInputT = z.infer<typeof TurnoverInput>;
 
-export const TurnoverOutput = z.object({
-  brief: z.string(),
-  checklist: z.array(z.string()),
-  crew_message_draft: z.string(),
-  estimated_duration_min: z.number().int().positive(),
-  _mock: z.literal(true),
-  _pitch: z.string(),
-});
+export const TurnoverOutput = z
+  .object({
+    brief: z.string(),
+    approval_required: z.literal(true),
+    window_minutes: z.number().positive(),
+    feasible: z.boolean(),
+    warnings: z.array(z.string()),
+    checklist: z.array(z.string()),
+    crew_message_draft: z.string(),
+    estimated_duration_min: z.number().int().positive(),
+    required_duration_min: z.number().int().positive().optional(),
+    proposed_cleaner_id: z.string().nullable().optional(),
+    assignment_status: z.literal('proposed_only').optional(),
+    scheduled_tasks: z
+      .array(z.object({ id: z.string(), title: z.string(), start: z.string(), end: z.string() }))
+      .optional(),
+    planned_start: z.string().nullable().optional(),
+    planned_end: z.string().nullable().optional(),
+    local_window: z.string().optional(),
+    ...ResultFields,
+  })
+  .superRefine(validateResult);
 export type TurnoverOutputT = z.infer<typeof TurnoverOutput>;

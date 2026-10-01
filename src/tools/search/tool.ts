@@ -1,32 +1,32 @@
 import type { Logger } from 'pino';
-import { SearchInput, type SearchInputT } from './schema.js';
+import { SearchInput, SearchOutput } from './schema.js';
 import { searchHandler, type SearchDeps } from './handler.js';
-import { wrapHandler, type ToolDefinition } from '../registry.js';
+import { createTool, toolError, type ToolDefinition } from '../registry.js';
 import { isOk } from '../../lib/result.js';
-import { formatError } from '../../lib/errors.js';
 import { withTelemetry } from '../../lib/telemetry.js';
 
-export const buildSearchTool = (deps: SearchDeps, log: Logger, debug = false): ToolDefinition => ({
-  name: 'airbnb_search',
-  description:
-    'Search Airbnb listings on public data. Returns listing IDs, titles, prices, locations.',
-  inputSchema: {
-    type: 'object',
-    properties: { location: { type: 'string' } },
-    required: ['location'],
-  },
-  schema: SearchInput,
-  handler: wrapHandler(
-    SearchInput,
-    withTelemetry(
-      log,
-      'airbnb_search',
-      async (input) => {
-        const r = await searchHandler(deps)(input as SearchInputT);
-        if (isOk(r)) return r.value;
-        return { error: formatError(r.error), kind: r.error.kind };
-      },
-      { debug },
-    ),
-  ),
-});
+export const buildSearchTool = (deps: SearchDeps, log: Logger, debug = false): ToolDefinition =>
+  createTool({
+    name: 'airbnb_search',
+    description:
+      'Search Airbnb listings on public data. Returns listing IDs, titles, prices, locations.',
+    schema: SearchInput,
+    output: SearchOutput,
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
+    handler: (input, context) =>
+      withTelemetry(
+        log,
+        'airbnb_search',
+        async (validated: typeof input) => {
+          const r = await searchHandler(deps)(validated, context?.signal);
+          if (isOk(r)) return r.value;
+          return toolError(r.error);
+        },
+        { debug },
+      )(input),
+  });

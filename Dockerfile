@@ -1,14 +1,14 @@
-FROM node:20-bookworm-slim AS build
+FROM node:24-bookworm-slim AS build
 WORKDIR /app
 COPY package*.json tsconfig*.json ./
-RUN npm ci
+RUN npm ci --ignore-scripts
 COPY src ./src
-RUN npm run build && npm prune --production
+RUN npm run build && npm prune --omit=dev --ignore-scripts
 
-FROM gcr.io/distroless/nodejs20-debian12
+FROM gcr.io/distroless/nodejs24-debian13:nonroot
 WORKDIR /app
-COPY --from=build /app/node_modules ./node_modules
-COPY --from=build /app/dist ./dist
-COPY --from=build /app/package.json ./package.json
+COPY --from=build --chown=nonroot:nonroot /app/node_modules ./node_modules
+COPY --from=build --chown=nonroot:nonroot /app/dist ./dist
+COPY --from=build --chown=nonroot:nonroot /app/package.json ./package.json
 USER nonroot
 ENTRYPOINT ["/nodejs/bin/node", "dist/index.js"]

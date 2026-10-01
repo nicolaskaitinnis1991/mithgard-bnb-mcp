@@ -1,0 +1,238 @@
+{
+  "date": "2026-10-02",
+  "baseline": "80f162254d7458c51f151ab80d12a921e6ca5738",
+  "status": "implemented_local_verification_pending",
+  "scope": "Local provided-data host engines and bounded read-only orchestration; explicit demo fallback, no invented provider access.",
+  "phases": [
+    "A: inventory and critical review",
+    "B: acceptance contract and data model",
+    "C: implement and verify each area",
+    "D: compose bounded workflow and negative paths",
+    "E: integrated native/container verification",
+    "F: index, reproducible evidence and draft PR",
+    "G: separate provider/human acceptance"
+  ],
+  "areas": [
+    {
+      "id": "PUB-SEARCH",
+      "title": "Public search",
+      "source": ["src/tools/search", "src/parsers/airbnb-public.ts"],
+      "tests": [
+        "tests/integration/parser-search-live.test.ts",
+        "tests/unit/search-handler.test.ts",
+        "tests/integration/parser-search.test.ts"
+      ],
+      "criteria": [
+        "Nightly, stay-total and unknown quotes preserve evidence and currency.",
+        "Date/currency cache isolation, invalid inputs and changed public shapes fail explicitly."
+      ],
+      "external": ["Live Airbnb availability is a separate opt-in observation."]
+    },
+    {
+      "id": "PUB-LISTING",
+      "title": "Public listing details",
+      "source": ["src/tools/listing-details", "src/parsers/airbnb-public.ts"],
+      "tests": [
+        "tests/integration/parser-listing.test.ts",
+        "tests/unit/listing-handler.test.ts",
+        "tests/integration/parser-search-live.test.ts"
+      ],
+      "criteria": [
+        "Unknown numeric facts remain unknown; no invented account facts.",
+        "All input, HTTP and output budgets hold; live timeout is visible."
+      ],
+      "external": ["External listing availability cannot be guaranteed from fixtures."]
+    },
+    {
+      "id": "HOST-INSIGHTS",
+      "title": "Operational insights",
+      "source": [
+        "src/tools/host-insights",
+        "src/host-data/contracts.ts",
+        "src/host-data/engines.ts"
+      ],
+      "tests": ["tests/integration/provided-host-data.test.ts"],
+      "criteria": [
+        "30 nights, 5 owner blocks, 10 occupied nights, revenue1000 -> occupancy0.4, ADR100, RevPAR40.",
+        "Zero denominator -> null, cancelled/excluded nights do not inflate revenue, missing comparison -> no market claim.",
+        "Identical provided data with a different listing ID produces identical numeric metrics."
+      ],
+      "external": ["Authenticated automatic import and actual benchmark data need a provider."]
+    },
+    {
+      "id": "HOST-MESSAGE",
+      "title": "Guest drafts",
+      "source": [
+        "src/tools/guest-message-assistant",
+        "src/host-data/contracts.ts",
+        "src/host-data/engines.ts"
+      ],
+      "tests": ["tests/integration/provided-host-data.test.ts"],
+      "criteria": [
+        "Wifi plus pet question handles both topics; missing facts remain listed.",
+        "Verified property policy overrides a guest claim; access data requires explicit permission.",
+        "DE/EN template limits and unsupported topics are explicit; every draft requires approval."
+      ],
+      "external": ["Sending a message requires authorized messaging integration."]
+    },
+    {
+      "id": "HOST-TRIAGE",
+      "title": "Booking triage",
+      "source": [
+        "src/tools/booking-request-triage",
+        "src/host-data/contracts.ts",
+        "src/host-data/engines.ts"
+      ],
+      "tests": ["tests/integration/provided-host-data.test.ts"],
+      "criteria": [
+        "Capacity4 and party of20 cannot be recommended for acceptance.",
+        "Explicit event/pet/min-stay violations take precedence over profile scores.",
+        "Unknown required rules -> review; long trip reason is not proof of trust; no autonomous decision."
+      ],
+      "external": ["Booking decisions and source authenticity need authorized integration."]
+    },
+    {
+      "id": "HOST-PRICING",
+      "title": "Price suggestions",
+      "source": [
+        "src/tools/smart-pricing",
+        "src/host-data/contracts.ts",
+        "src/host-data/engines.ts"
+      ],
+      "tests": ["tests/integration/provided-host-data.test.ts"],
+      "criteria": [
+        "Base100 x factor1.25 capped120 ->120, with reason.",
+        "Booked/blocked nights are excluded; absent prices never get a synthetic baseline.",
+        "Currency, max30dates, bounds and full-occupancy assumption are explicit; no claimed revenue forecast."
+      ],
+      "external": ["Live market feed and actual price changes are separate provider operations."]
+    },
+    {
+      "id": "HOST-CALENDAR",
+      "title": "Calendar analysis",
+      "source": [
+        "src/tools/calendar-optimizer",
+        "src/host-data/contracts.ts",
+        "src/host-data/engines.ts"
+      ],
+      "tests": ["tests/integration/provided-host-data.test.ts"],
+      "criteria": [
+        "Fully booked calendar -> no gaps.",
+        "Two available nights between booked nights with min-stay3 -> actual min-stay conflict.",
+        "Unknown dates never become available; amounts derive only from supplied prices and are conditional."
+      ],
+      "external": ["Automatic calendar synchronization requires a provider."]
+    },
+    {
+      "id": "HOST-REVIEW",
+      "title": "Review drafts",
+      "source": [
+        "src/tools/review-responder",
+        "src/host-data/contracts.ts",
+        "src/host-data/engines.ts"
+      ],
+      "tests": ["tests/integration/provided-host-data.test.ts"],
+      "criteria": [
+        "Five-star exposed-electrical-wires complaint escalates and does not get a praise-only response.",
+        "No completed repair is claimed without supplied confirmation; concerns outrank star count.",
+        "Classification limits are explicit and human approval always required."
+      ],
+      "external": [
+        "Publication and open-ended LLM interpretation need separate integration/evaluation."
+      ]
+    },
+    {
+      "id": "HOST-TURNOVER",
+      "title": "Turnover plan",
+      "source": [
+        "src/tools/turnover-coordinator",
+        "src/host-data/contracts.ts",
+        "src/host-data/engines.ts"
+      ],
+      "tests": ["tests/integration/provided-host-data.test.ts"],
+      "criteria": [
+        "120 cleaning +30 buffer fits180minute window.",
+        "Availability, conflicting assignment and late start can make a plan infeasible.",
+        "UTC-offset/timezone arithmetic is tested; proposed assignment is never reported as confirmed."
+      ],
+      "external": ["Real crew assignment/status/communication requires a provider."]
+    },
+    {
+      "id": "FLOW",
+      "title": "Plan / execute / verify workflow",
+      "source": ["src/workflows"],
+      "tests": ["tests/integration/host-workflow.test.ts"],
+      "criteria": [
+        "Bounded explicit steps produce a reviewable plan before execution.",
+        "All arguments are validated before the first step; unknown tools and recursion are rejected.",
+        "Cancellation, deadlines, dependency order and partial failure are explicit; later dependent work cannot falsely succeed.",
+        "Results retain provided/demo/public provenance and require human approval for business actions."
+      ],
+      "external": ["Optional LLM planner is distinct from deterministic tool orchestration."]
+    },
+    {
+      "id": "PROTO",
+      "title": "MCP contracts and privacy",
+      "source": ["src/tools/registry.ts", "src/server.ts", "src/lib/redaction.ts"],
+      "tests": [
+        "tests/integration/mcp-contract.test.ts",
+        "tests/unit/registry.test.ts",
+        "tests/unit/redaction.test.ts"
+      ],
+      "criteria": [
+        "Discovery before SDK calls enforces output contracts for every tool.",
+        "Abort during a handler cannot return a late success; UTF8 output has a finite byte limit.",
+        "Errors/debug logs do not expose arbitrary guest text, credentials or dynamic keys."
+      ],
+      "external": []
+    },
+    {
+      "id": "OPS",
+      "title": "Operations, HTTP and resource limits",
+      "source": ["src/operations", "src/lib/http.ts", "src/lib/cache.ts"],
+      "tests": [
+        "tests/unit/operations-agent.test.ts",
+        "tests/unit/http-resilience.test.ts",
+        "tests/integration/http-lifecycle.test.ts",
+        "tests/unit/cache.test.ts",
+        "tests/e2e/eof-shutdown.test.ts",
+        "tests/unit/env.test.ts"
+      ],
+      "criteria": [
+        "Queue timeout is distinguished from upstream timeout and does not trip upstream circuit.",
+        "Old success or failure cannot override a newer recovery generation.",
+        "Cache memory and workflow/HTTP queue/body/deadline budgets are bounded; shutdown releases active work."
+      ],
+      "external": [
+        "Process restart and external alert delivery require a configured supervisor/destination."
+      ]
+    },
+    {
+      "id": "LOAD",
+      "title": "Synthetic multi-tool load",
+      "source": ["tests/stress"],
+      "tests": ["tests/stress/virtual-users.test.ts"],
+      "criteria": [
+        "Initialized discovery, all domain result schemas and workflow batches are checked.",
+        "Explicit call counts, concurrency, success/error counts, duration and scope are recorded.",
+        "Native and constrained-container runs pass; no external Airbnb stress."
+      ],
+      "external": ["Synthetic tests are not human acceptance or an internet-scale SLA."]
+    },
+    {
+      "id": "EVIDENCE",
+      "title": "Inventory, traceability, packaging",
+      "source": ["scripts", "docs"],
+      "tests": [],
+      "criteria": [
+        "Source/function/method inventory and Markdown hashes cover maintained code and docs.",
+        "Each acceptance area maps to real source, real test cases and machine-produced command results.",
+        "No acceptance result is written as passed without successful execution; failures and external gates remain visible.",
+        "Clean install, lint, strict types, coverage, build, container and audit are executed locally; CI repeats this gate. The final handoff separately records remote CI and reviewed-commit archive identity."
+      ],
+      "external": [
+        "Human host acceptance and target Base360 integration require real participants/access."
+      ]
+    }
+  ]
+}

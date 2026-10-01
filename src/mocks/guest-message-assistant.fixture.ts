@@ -1,98 +1,90 @@
+import type { DemoOutput } from '../host-data/contracts.js';
 import type { GuestMessageOutputT } from '../tools/guest-message-assistant/schema.js';
 
 export const GUEST_MESSAGE_PITCH = 'Drafts host-voiced replies with approval gate';
-
 export type Topic = 'wifi' | 'checkin' | 'late' | 'cancel' | 'pet' | 'default';
-
-const TOPIC_KEYWORDS: { topic: Topic; needles: string[] }[] = [
-  { topic: 'wifi', needles: ['wifi', 'wlan', 'internet'] },
-  { topic: 'checkin', needles: ['check-in', 'checkin', 'check in', 'einchecken'] },
-  { topic: 'late', needles: ['late', 'spät', 'verspät', 'delay'] },
-  { topic: 'cancel', needles: ['cancel', 'storno', 'refund', 'rückerstattung'] },
-  { topic: 'pet', needles: ['pet', 'hund', 'katze', 'dog', 'cat'] },
+const TOPIC_PATTERNS: { topic: Topic; pattern: RegExp }[] = [
+  { topic: 'wifi', pattern: /\b(?:wi[ -]?fi|wlan|internet)\b/i },
+  { topic: 'checkin', pattern: /\b(?:check[ -]?in|einchecken)\b/i },
+  { topic: 'late', pattern: /\b(?:late|delay(?:ed)?|spät|verspät\w*)\b/i },
+  { topic: 'cancel', pattern: /\b(?:cancel\w*|storno\w*|refund\w*|rückerstattung\w*)\b/i },
+  { topic: 'pet', pattern: /\b(?:pets?|hund\w*|katze\w*|dogs?|cats?)\b/i },
 ];
+export const detectTopic = (message: string): Topic =>
+  TOPIC_PATTERNS.find(({ pattern }) => pattern.test(message))?.topic ?? 'default';
 
-export const detectTopic = (msg: string): Topic => {
-  const lower = msg.toLowerCase();
-  for (const { topic, needles } of TOPIC_KEYWORDS) {
-    if (needles.some((n) => lower.includes(n))) return topic;
-  }
-  return 'default';
-};
-
+// These are safe acknowledgement drafts. No invented credentials, permission,
+// fees, availability or house rules may reach an actual guest.
 const TEMPLATES: Record<Topic, GuestMessageOutputT['suggestions']> = {
   wifi: [
-    { tone: 'short', text: 'Wifi: "BnBGuest" / Password: "welcome2026". Router by the entrance.' },
+    {
+      tone: 'short',
+      text: 'I will check the correct wifi details for your accommodation and get back to you.',
+    },
     {
       tone: 'friendly',
-      text: 'Hi! The wifi network is "BnBGuest" and the password is "welcome2026". The router is right by the entrance — let me know if anything is unclear!',
+      text: 'Hi! Thanks for asking. I will confirm the wifi network and password for your accommodation and get back to you.',
     },
     {
       tone: 'formal',
-      text: 'Dear guest, please find the wifi credentials below: SSID "BnBGuest", password "welcome2026". The router is located at the entrance area. Kind regards.',
+      text: 'Dear guest, I will verify the wifi details for your accommodation before sharing them with you.',
     },
   ],
   checkin: [
-    {
-      tone: 'short',
-      text: 'Check-in: from 15:00. Self check-in via lockbox. Code on the day.',
-    },
+    { tone: 'short', text: 'I will confirm your check-in time and access instructions.' },
     {
       tone: 'friendly',
-      text: 'Hi! Check-in is from 15:00. We use a self-service lockbox — I will send the code on the day of arrival. Have a great trip!',
+      text: 'Hi! I will check the arrival time and access instructions for your booking and get back to you.',
     },
     {
       tone: 'formal',
-      text: 'Dear guest, check-in begins at 15:00. We use a self-service lockbox; the access code will be shared on the day of arrival.',
+      text: 'Dear guest, I will confirm the applicable check-in time and access instructions for your reservation.',
     },
   ],
   late: [
     {
       tone: 'short',
-      text: 'No problem — late check-in is fine, the lockbox works 24/7.',
+      text: 'Thanks for the update. I will check whether late arrival is possible for your booking.',
     },
     {
       tone: 'friendly',
-      text: 'No worries at all! The lockbox is accessible 24/7, so a late arrival is no problem. Safe travels!',
+      text: 'Thanks for letting me know! Please share your expected arrival time. I will check the available arrival arrangements.',
     },
     {
       tone: 'formal',
-      text: 'Dear guest, a late arrival is no issue. The lockbox is available around the clock. Please let us know your estimated time of arrival when convenient.',
+      text: 'Dear guest, please provide your expected arrival time so I can confirm the available check-in arrangements.',
     },
   ],
   cancel: [
     {
       tone: 'short',
-      text: 'Cancellations follow the listing policy. Please initiate via Airbnb.',
+      text: 'I will check the cancellation policy applicable to your reservation. Please review the details in Airbnb.',
     },
     {
       tone: 'friendly',
-      text: 'Sorry to hear plans changed! Cancellations follow the policy on the listing — please initiate it via Airbnb so the refund can be processed automatically.',
+      text: 'Sorry to hear your plans changed. Please check the cancellation details shown for your reservation in Airbnb; I will verify the applicable policy too.',
     },
     {
       tone: 'formal',
-      text: 'Dear guest, please initiate any cancellation through the Airbnb platform. Refunds are handled per the listing cancellation policy.',
+      text: 'Dear guest, cancellation and refund eligibility depend on the policy applicable to your reservation. Please review the reservation details in Airbnb.',
     },
   ],
   pet: [
     {
       tone: 'short',
-      text: 'Pets are welcome (1 dog/cat, +20 EUR cleaning).',
+      text: 'I will check the pet rules and any applicable fees for your accommodation.',
     },
     {
       tone: 'friendly',
-      text: 'Yes, pets are welcome! We allow one well-behaved dog or cat with a small additional cleaning fee of 20 EUR. Please mention the pet in the booking.',
+      text: 'Thanks for asking! Please let me know the pet type and number. I will confirm whether the accommodation permits them and whether any fee applies.',
     },
     {
       tone: 'formal',
-      text: 'Dear guest, pets are permitted (one cat or dog) with an additional cleaning fee of 20 EUR. Kindly note the pet in your reservation.',
+      text: 'Dear guest, please provide the pet type and number so I can verify the accommodation rules and any applicable fees.',
     },
   ],
   default: [
-    {
-      tone: 'short',
-      text: 'Thanks for reaching out — getting back to you shortly.',
-    },
+    { tone: 'short', text: 'Thanks for reaching out — getting back to you shortly.' },
     {
       tone: 'friendly',
       text: 'Hi! Thanks for the message — I will get back to you with details shortly.',
@@ -103,18 +95,25 @@ const TEMPLATES: Record<Topic, GuestMessageOutputT['suggestions']> = {
     },
   ],
 };
-
+const CONTEXT: Record<Topic, string[]> = {
+  wifi: ['Verified listing wifi credentials'],
+  checkin: ['Reservation arrival time', 'Verified listing access instructions'],
+  late: ['Reservation arrival time', 'Host-approved late arrival policy'],
+  cancel: ['Applicable reservation cancellation policy'],
+  pet: ['Listing pet policy', 'Applicable fee and pet details'],
+  default: ['Reservation and message context'],
+};
 const RECOMMENDED_INDEX_BY_VOICE: Record<'casual' | 'professional' | 'warm', 0 | 1 | 2> = {
   casual: 0,
   professional: 2,
   warm: 1,
 };
-
 export const buildGuestMessageOutput = (
   topic: Topic,
   voice: 'casual' | 'professional' | 'warm',
-): GuestMessageOutputT => ({
+): DemoOutput<GuestMessageOutputT> => ({
   suggestions: TEMPLATES[topic],
+  missing_context: CONTEXT[topic],
   recommended_index: RECOMMENDED_INDEX_BY_VOICE[voice],
   approval_required: true,
   _mock: true,

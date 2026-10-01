@@ -1,152 +1,73 @@
 # review_responder
 
-> Drafts a host-voiced review response keyed to the rating + sentiment, and
-> flags escalation cases for human review.
-> Status: **Demo (requires Airbnb Partner API)** — current implementation
-> picks one of 8 templates by sentiment × host-voice and runs a keyword scan
-> for escalation triggers.
+Drafts an EN/DE review reply while prioritizing detected or supplied concerns over the star rating. No review reply is published.
 
-## Purpose
+## Mode and evidence
 
-`review_responder` writes the host's reply to a guest review. It classifies
-sentiment from the star rating (with a keyword override for "mixed"), picks
-one of two host-voice flavours (warm / professional), and — critically —
-flags reviews that warrant a human-only response so the agent doesn't
-glibly auto-reply to "the place was unsafe and the host was rude." Pairs
-with [`host_insights`](./host_insights.md) when an agent is doing a
-periodic review-tone sweep.
+`mode: "provided"` requires `host_data`. Passing data without that mode, or omitting data in that mode, fails validation; there is no fixture fallback. With `mode: "demo"` (or no mode and no data), the existing synthetic fixture runs instead.
 
-## Input schema
+Every result has `_source`, `_mock`, and `data_evidence`. Provided calculations use `_source: "provided", _mock: false`; this means calculated from caller assertions, not authenticated/imported account data. Evidence includes the caller's `as_of` timestamp, IANA `timezone`, `currency`, `complete`, and detected `missing_fields`. `complete: true` is only retained when the source asserts completeness and required calculation facts are present. Demo evidence has `as_of: null`, `complete: false`, and `missing_fields: ["synthetic_data"]`.
 
-```ts
-{
-  review_id: string;                                 // required
-  review_text: string;                               // required, non-empty
-  rating: 1 | 2 | 3 | 4 | 5;                         // star rating
-  host_voice?: "warm" | "professional";              // default "warm"
-}
-```
+Metadata is required in every supplied dataset. Supported currencies are EUR, GBP, USD, CAD, AUD and CHF; money supports up to two decimals, nonnegative values and a maximum of 1,000,000 per supplied amount. No currency conversion occurs. Input objects reject unknown fields; strings, arrays, dates and amounts are bounded. Outputs are validated at the MCP boundary.
 
-Source: [`src/tools/review-responder/schema.ts`](../../src/tools/review-responder/schema.ts).
+## Supplied-data contract and calculation
 
-## Sentiment classification
+- `review_id`: nonempty ID up to 200 characters; `review_text`: 1–16,000 trimmed characters.
+- `rating`: integer 1–5; `host_voice`: `warm` (default) or `professional`.
+- `host_data.language`: `en` or `de` (required).
+- Optional `concerns`: up to 20 supplied concerns, at most 200 characters each.
+- Optional `completed_actions`: up to 10 `{description, confirmed: true}` records, description at most 500 characters. False/missing confirmations fail validation. These are caller assertions, not independently verified repair completion.
 
-| Rating | Has escalation keyword | Sentiment   |
-|--------|------------------------|-------------|
-| 5      | no                     | `positive`  |
-| 5      | yes                    | `positive`  |
-| 4      | no                     | `positive`  |
-| 4      | yes                    | `mixed`     |
-| 3      | —                      | `neutral`   |
-| 1-2    | —                      | `negative`  |
+Finite patterns detect some electrical hazards, safety concerns and condition complaints. Any detected/supplied concern requires escalation even at five stars, and yields `mixed` sentiment for ratings >=3. Ratings <=2 also require escalation. Escalating drafts acknowledge concerns and future review; they do not invent an investigation, refund or completed repair. Only explicitly supplied confirmed actions can be stated as completed. `concerns`, `classification_limits`, `needs_escalation`, and conditional `escalation_reason` are visible.
 
-Escalation keywords (case-insensitive substring scan):
-`refund`, `broken`, `dirty`, `noise`, `mold`, `unsafe`, `rude`.
+Classification is non-exhaustive and cannot reliably handle negation, sarcasm or arbitrary languages. Positive stars do not establish that a stay was enjoyable; the draft thanks the reviewer without adding property facts. Every reply requires `approval_required: true` and host review.
 
-`needs_escalation` is `true` only when **rating ≤ 2 AND text contains at
-least one escalation keyword**. A 4-star review mentioning "dirty" becomes
-`mixed` sentiment but does not escalate.
+## Reproducible synthetic example
 
-## Output shape
-
-```jsonc
-{
-  "draft": "...",                       // single-paragraph reply
-  "sentiment": "positive",              // positive | neutral | negative | mixed
-  "needs_escalation": false,
-  "escalation_reason": "Negative review mentions \"dirty\" — manual review recommended.", // only when needs_escalation
-  "_mock": true,
-  "_pitch": "Auto-drafts review responses, flags escalation cases for human review"
-}
-```
-
-## Example
-
-### Agent prompt
-
-> "Draft a warm response to this 2-star review: 'The place was dirty and the
-> wifi was broken.'"
-
-### Tool call (JSON-RPC)
+These caller facts are synthetic test data, not a real property account. Input:
 
 ```json
 {
-  "method": "tools/call",
-  "params": {
-    "name": "review_responder",
-    "arguments": {
-      "review_id": "rev-7782",
-      "review_text": "The place was dirty and the wifi was broken.",
-      "rating": 2,
-      "host_voice": "warm"
-    }
+  "mode": "provided",
+  "review_id": "synthetic-review",
+  "review_text": "Five stars but dangerous exposed electrical wires.",
+  "rating": 5,
+  "host_data": {
+    "as_of": "2026-06-03T09:00:00Z",
+    "timezone": "Europe/Berlin",
+    "currency": "EUR",
+    "complete": true,
+    "language": "en"
   }
 }
 ```
 
-### Response (escalation case)
+Selected output fields (the full result also includes evidence and other validated fields):
 
-```jsonc
+```json
 {
-  "draft": "We're truly sorry your stay didn't meet expectations. Your feedback is taken seriously and we're already looking into the issues you mentioned.",
-  "sentiment": "negative",
+  "_source": "provided",
+  "_mock": false,
+  "sentiment": "mixed",
   "needs_escalation": true,
-  "escalation_reason": "Negative review mentions \"dirty\" — manual review recommended.",
-  "_mock": true,
-  "_pitch": "Auto-drafts review responses, flags escalation cases for human review"
+  "concerns": [
+    "electrical_safety",
+    "safety"
+  ],
+  "approval_required": true,
+  "draft": "Thank you for your feedback. We take your concerns seriously and will review the points you raised."
 }
 ```
 
-Contrast — a 5-star review in warm voice:
+## External prerequisites and acceptance
 
-```jsonc
-{
-  "draft": "Thank you so much for the kind words! It made our day to read your review — we hope to welcome you back soon.",
-  "sentiment": "positive",
-  "needs_escalation": false,
-  "_mock": true,
-  "_pitch": "Auto-drafts review responses, flags escalation cases for human review"
-}
-```
+Publishing a reply and evaluating open-ended language interpretation need a separate authorized integration and real review evaluation.
 
-Full template list (8 entries: 4 sentiments × 2 voices) in
-[`src/mocks/review-responder.fixture.ts`](../../src/mocks/review-responder.fixture.ts).
+- [Schema](../../src/tools/review-responder/schema.ts)
+- [Handler](../../src/tools/review-responder/handler.ts)
+- [Strict host-data contracts](../../src/host-data/contracts.ts)
+- [Local calculation engines](../../src/host-data/engines.ts)
+- [Provided-data acceptance scenarios](../../tests/integration/provided-host-data.test.ts)
+- [Saved acceptance plan](../acceptance-plan.md)
 
-## Edge cases & failure modes
-
-- **Demo data only** — `_mock: true` always set. A real implementation would
-  use an LLM to generate a context-aware reply, ideally referencing
-  specifics the guest mentioned, and would post via the Partner Reviews API
-  after host approval.
-- **`needs_escalation: true`** → the `draft` is still returned (the warm-tone
-  apology template), but downstream code MUST gate on host review. The
-  template is generic on purpose.
-- **Multiple escalation keywords** → the first match found is reported in
-  `escalation_reason`.
-- **Mixed-sentiment edge** (4★ + escalation keyword) → `sentiment: "mixed"`,
-  `needs_escalation: false`. Mixed template is gentler than negative.
-
-## Performance characteristics
-
-- **Cache TTL**: none (pure compute).
-- **Rate-limited**: no.
-- **Typical p95 latency**: <1 ms.
-
-## When to use
-
-- ✅ Best for: routine 4-5 star review responses (low-stakes), surfacing
-  escalation cases to a host's inbox, demos showing escalation gating in
-  agent workflows, host-coaching ("here's the tone you usually use").
-- ❌ Not for: any 1-2 star auto-post. Don't bypass `needs_escalation`. Real
-  hosts have lost superhost status over careless replies to bad reviews —
-  see [`docs/limitations.md`](../limitations.md).
-
-## See also
-
-- Source: [`src/tools/review-responder/`](../../src/tools/review-responder/)
-- Schema: [`src/tools/review-responder/schema.ts`](../../src/tools/review-responder/schema.ts)
-- Fixture: [`src/mocks/review-responder.fixture.ts`](../../src/mocks/review-responder.fixture.ts)
-- Related tools: [`host_insights`](./host_insights.md),
-  [`guest_message_assistant`](./guest_message_assistant.md)
-- Mock-vs-live honesty policy:
-  [ADR-0005](../adr/0005-mock-vs-live-honesty.md)
+Automated scenarios and synthetic load are technical evidence, not human host acceptance.

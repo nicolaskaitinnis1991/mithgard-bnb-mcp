@@ -1,64 +1,11 @@
-# Security Notes
+# Security notes
 
-## Dependency audit — 2026-05-04
+Inputs are strictly validated and bounded. Public requests have queue, body, retry and deadline limits. MCP successes are output-validated; generic failures do not contain raw thrown exceptions or success-shaped structured content. Workflow partial failures deliberately retain validated progress under their own schema.
 
-`npm audit --production` reports **4 vulnerabilities** (3 moderate, 1 high).
+Logs use stderr. Normal telemetry stores fixed metadata; debug mode additionally emits redacted structural summaries. Arbitrary guest strings, free-form messages, access information and dynamic keys are not intentionally logged. The operations agent stores counters and fixed error kinds. Cache data is in-memory public listing data; no guest database is implemented.
 
-All four are **transitive sub-dependencies of `@modelcontextprotocol/sdk@1.29.0`**
-and live in code paths this server does not import. The runtime is not exposed.
+All tools are annotated read-only. Host engines and demos never send messages or change reservations, prices or schedules. Public-page fetching uses a self-identifying user agent and bounded quotas. Synthetic stress tests run locally and do not bombard Airbnb.
 
-### Traceback
+The container runs non-root and can be started read-only with dropped capabilities. These controls do not prove that every dependency or deployment is secure. npm audit results are dated evidence; rerun them after dependency changes. Refer to [the verification report](acceptance-plan.md).
 
-| Package | Severity | Direct dep? | Runtime path? | Path via | Resolution |
-|---|---|---|---|---|---|
-| `fast-uri` `<=3.1.1` | high | No | No | `@modelcontextprotocol/sdk → ajv → fast-uri` | Used by AJV for JSON-schema URI validation. The SDK's `Server`/`StdioServerTransport` (our only entry points) does not pass user-controlled URIs to AJV. Tracked upstream; not exploitable in our usage. |
-| `hono` `<=4.12.17` | moderate | No | No | `@modelcontextprotocol/sdk → hono` and `@modelcontextprotocol/sdk → @hono/node-server → hono` | Hono ships with the SDK for the HTTP/SSE transport variants we do **not** use (we use `StdioServerTransport`). Vulnerabilities affect JSX-SSR, JWT verify, and cache middleware — none of which are reachable from stdio. |
-| `ip-address` `<=10.1.0` | moderate | No | No | `@modelcontextprotocol/sdk → express-rate-limit → ip-address` | XSS in `Address6` HTML-emitting methods. We never call those methods; we don't even instantiate `express-rate-limit`. |
-| `express-rate-limit` `8.0.1 – 8.5.0` | moderate | No | No | `@modelcontextprotocol/sdk → express-rate-limit` | Only the SDK's HTTP transport uses this. Stdio transport bypasses it entirely. |
-
-### Method
-
-```bash
-npm audit --production
-npm ls hono ip-address express-rate-limit fast-uri
-grep -rn "from ['\"]hono" src/                  # 0 hits
-grep -rn "from ['\"]ip-address" src/            # 0 hits
-grep -rn "from ['\"]express-rate-limit" src/    # 0 hits
-grep -rn "from ['\"]fast-uri" src/              # 0 hits
-grep -rn "from ['\"]ajv" src/                   # 0 hits
-```
-
-All four are hoisted into `node_modules/` by `@modelcontextprotocol/sdk`. They are
-not imported by any file under `src/`. The SDK entry points we use (`Server`,
-`StdioServerTransport`, schema types from `types.js`) do not transit these libs at
-runtime when communicating over stdio.
-
-### Why we don't run `npm audit fix` today
-
-The "fix" path either:
-
-1. Bumps `@modelcontextprotocol/sdk` to a version we haven't validated against our
-   test suite, or
-2. Forces a downgrade/upgrade of transitive deps that creates lockfile drift
-   without changing the actual runtime behaviour (because we never touch those
-   libs).
-
-We accept the audit noise rather than risk a SDK-version regression on the eve
-of the v0.1.0-alpha.1 cut.
-
-### What would change this calculus
-
-- If we switch from stdio to HTTP/SSE transport, `hono` / `express-rate-limit` /
-  `ip-address` enter the runtime path. At that point we patch immediately or
-  pin to a fixed minor.
-- If any of these become a direct dependency in our `package.json`, the table
-  above is wrong and the fix becomes mandatory.
-- If a fixed minor of `@modelcontextprotocol/sdk` ships, we bump on its own commit
-  (not bundled with feature work) and re-run `npm audit --production` to confirm
-  the count drops to zero.
-
-### Last review
-
-| Date | By | Result |
-|---|---|---|
-| 2026-05-04 | claude (D11) | 4 transitive-only via MCP SDK, documented, no action |
+Report reproducible security issues through the repository's documented [security policy](../SECURITY.md). Do not include personal data or secrets in public issues.
