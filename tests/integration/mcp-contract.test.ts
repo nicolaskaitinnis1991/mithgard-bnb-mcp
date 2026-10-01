@@ -3,12 +3,22 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { CallToolResultSchema, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
+import { readFileSync } from 'node:fs';
 import type { Logger } from 'pino';
 import { buildServer } from '../../src/server.js';
 import { allTools, mockTools, type AppDeps } from '../../src/tools/index.js';
-import { createTool, type ToolDefinition } from '../../src/tools/registry.js';
-import { err } from '../../src/lib/result.js';
+import {
+  createTool,
+  MAX_TOOL_OUTPUT_BYTES,
+  type ToolDefinition,
+} from '../../src/tools/registry.js';
+import { err, ok } from '../../src/lib/result.js';
 import { upstreamHTTP } from '../../src/lib/errors.js';
+import { parseListingDetails, parseSearchResults } from '../../src/parsers/airbnb-public.js';
+import { WorkflowEngine } from '../../src/workflows/engine.js';
+import { buildWorkflowTool } from '../../src/workflows/tool.js';
+import { WorkflowOutput } from '../../src/workflows/schema.js';
+import { APPROVAL_TOOLS, providedInputs } from '../stress/input-fixtures.js';
 
 const log = (): Logger => ({ info: vi.fn(), error: vi.fn(), debug: vi.fn() }) as unknown as Logger;
 
@@ -34,7 +44,7 @@ const dependencies = (): AppDeps => ({
   log: log(),
 });
 
-describe('MCP client/server contract', () => {
+describe('[PROTO] MCP client/server contract', () => {
   const clients: Client[] = [];
   afterEach(async () => {
     await Promise.all(clients.splice(0).map((client) => client.close()));
@@ -97,6 +107,111 @@ describe('MCP client/server contract', () => {
     }
   });
 
+  it('validates both public success contracts with real parsers and local HTML only', async () => {
+    const deps = dependencies();
+    deps.search.http.get = () =>
+      Promise.resolve(ok(readFileSync('tests/integration/fixtures/search-berlin.html', 'utf8')));
+    deps.search.parse = (html, query) => parseSearchResults(html, query);
+    deps.listing.http.get = () =>
+      Promise.resolve(ok(readFileSync('tests/integration/fixtures/listing-12345.html', 'utf8')));
+    deps.listing.parse = parseListingDetails;
+    const tools = allTools(deps);
+    const client = await connect(tools);
+    await client.listTools();
+    for (const request of [
+      { name: 'airbnb_search', arguments: { location: 'Berlin', currency: 'EUR' } },
+      { name: 'airbnb_listing_details', arguments: { listing_id: '12345' } },
+    ]) {
+      const result = CallToolResultSchema.parse(await client.callTool(request));
+      expect(result.isError, request.name).toBe(false);
+      expect(result.structuredContent?._source).toBe('public');
+      expect(
+        tools
+          .find((tool) => tool.name === request.name)
+          ?.output?.safeParse(result.structuredContent).success,
+      ).toBe(true);
+      const first = result.content[0];
+      if (first?.type !== 'text') throw new Error('Expected text content');
+      expect(JSON.parse(first.text)).toEqual(result.structuredContent);
+    }
+  });
+
+  it('validates all supplied-data host contracts and evidence after SDK discovery', async () => {
+    const tools = mockTools(log());
+    const client = await connect(tools);
+    await client.listTools();
+    for (const [name, input] of Object.entries(providedInputs)) {
+      const result = CallToolResultSchema.parse(await client.callTool({ name, arguments: input }));
+      expect(result.isError, name).toBe(false);
+      expect(result.structuredContent, name).toMatchObject({
+        _source: 'provided',
+        _mock: false,
+        data_evidence: { source: 'provided', as_of: '2026-06-01T09:00:00Z' },
+      });
+      expect(
+        tools.find((tool) => tool.name === name)?.output?.safeParse(result.structuredContent)
+          .success,
+        name,
+      ).toBe(true);
+      if (APPROVAL_TOOLS.has(name)) expect(result.structuredContent?.approval_required).toBe(true);
+      const first = result.content[0];
+      if (first?.type !== 'text') throw new Error('Expected text content');
+      expect(JSON.parse(first.text)).toEqual(result.structuredContent);
+    }
+  });
+
+  it('validates structured partial workflow failures against the advertised SDK schema', async () => {
+    const tools = mockTools(log());
+    const failing = tools.find((tool) => tool.name === 'review_responder');
+    if (!failing) throw new Error('Expected review tool');
+    failing.handler = () =>
+      Promise.resolve({
+        content: [
+          { type: 'text', text: '{"kind":"ParseFailed","message":"private-handler-detail"}' },
+        ],
+        isError: true,
+      });
+    const client = await connect([...tools, buildWorkflowTool(new WorkflowEngine(tools))]);
+    await client.listTools();
+    const response = CallToolResultSchema.parse(
+      await client.callTool({
+        name: 'host_workflow',
+        arguments: {
+          mode: 'execute',
+          stop_on_error: false,
+          steps: [
+            { id: 'insights', tool: 'host_insights', arguments: providedInputs.host_insights },
+            { id: 'review', tool: 'review_responder', arguments: providedInputs.review_responder },
+            {
+              id: 'dependent',
+              tool: 'calendar_optimizer',
+              arguments: providedInputs.calendar_optimizer,
+              depends_on: ['review'],
+            },
+            { id: 'independent', tool: 'smart_pricing', arguments: providedInputs.smart_pricing },
+          ],
+        },
+      }),
+    );
+    expect(response.isError).toBe(true);
+    expect(WorkflowOutput.safeParse(response.structuredContent).success).toBe(true);
+    expect(response.structuredContent).toMatchObject({
+      execution_status: 'partial',
+      acceptance_status: 'not_verified',
+      summary: { completed: 2, failed: 1, skipped: 1, technical_verified: false },
+      results: [
+        { status: 'completed', source: 'provided' },
+        { status: 'failed', error_kind: 'ParseFailed' },
+        { status: 'skipped' },
+        { status: 'completed', source: 'provided' },
+      ],
+    });
+    expect(JSON.stringify(response)).not.toContain('private-handler-detail');
+    const first = response.content[0];
+    if (first?.type !== 'text') throw new Error('Expected text content');
+    expect(JSON.parse(first.text)).toEqual(response.structuredContent);
+  });
+
   it('returns tool failures as isError and leaves outputSchema validation to successful outputs', async () => {
     const client = await connect(allTools(dependencies()));
     await client.listTools();
@@ -133,6 +248,50 @@ describe('MCP client/server contract', () => {
     expect(result.isError).toBe(true);
     expect(JSON.stringify(result)).toContain('OutputValidationFailed');
     expect(JSON.stringify(result)).not.toContain('private-invalid-data');
+  });
+
+  it('enforces advertised output contracts in the SDK after discovery', async () => {
+    const tool = createTool({
+      name: 'wire_corruption',
+      description: 'Fixture bypasses the registry to test client validation',
+      schema: z.object({}),
+      output: z.object({ amount: z.number() }),
+      handler: () => Promise.resolve({ amount: 1 }),
+    });
+    tool.handler = () =>
+      Promise.resolve({
+        content: [{ type: 'text', text: '{"amount":"invalid"}' }],
+        structuredContent: { amount: 'invalid' },
+        isError: false,
+      });
+    const client = await connect([tool]);
+    await client.listTools();
+    await expect(client.callTool({ name: tool.name, arguments: {} })).rejects.toMatchObject({
+      code: ErrorCode.InvalidParams,
+    });
+  });
+
+  it('bounds custom handlers at the server boundary before SDK output validation', async () => {
+    const tool = createTool({
+      name: 'large_custom_handler',
+      description: 'Custom wrapper fixture',
+      schema: z.object({}),
+      output: z.object({ value: z.string() }),
+      handler: () => Promise.resolve({ value: '' }),
+    });
+    tool.handler = () =>
+      Promise.resolve({
+        content: [{ type: 'text', text: 'private-large-output'.repeat(MAX_TOOL_OUTPUT_BYTES) }],
+        structuredContent: { value: 'x' },
+        isError: false,
+      });
+    const client = await connect([tool]);
+    await client.listTools();
+    const result = await client.callTool({ name: tool.name, arguments: {} });
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toBeUndefined();
+    expect(JSON.stringify(result)).toContain('OutputTooLarge');
+    expect(JSON.stringify(result)).not.toContain('private-large-output');
   });
 
   it('rejects duplicate registrations before accepting protocol requests', () => {

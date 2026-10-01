@@ -2,7 +2,7 @@
   "name": "@mithgard/bnb-mcp",
   "version": "0.1.0-alpha.1",
   "private": true,
-  "description": "MCP server for public Airbnb data, labelled host workflow demos and a local operations agent.",
+  "description": "MCP server for public Airbnb data, supplied-data host analysis, bounded workflows and local operations.",
   "keywords": [
     "mcp",
     "model-context-protocol",
@@ -48,8 +48,10 @@
     "docs:check": "node scripts/index-repository.mjs --check",
     "smoke": "node scripts/smoke.mjs",
     "test:stress": "vitest run --config vitest.stress.config.ts",
-    "verify": "npm run lint && npm run typecheck && npm run test:cov && npm run build && npm run docs:check && npm run smoke && npm run test:stress",
-    "prepare": "husky"
+    "verify": "npm run test:evidence && npm run lint && npm run typecheck && npm run test:cov && npm run build && npm run docs:check && npm run smoke && npm run test:stress",
+    "prepare": "husky",
+    "acceptance": "node scripts/acceptance.mjs",
+    "test:evidence": "node --test scripts/evidence.test.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",

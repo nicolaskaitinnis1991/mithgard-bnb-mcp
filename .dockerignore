@@ -6,3 +6,7 @@ coverage
 tests
 docs
 *.md
+
+reports
+work
+outputs

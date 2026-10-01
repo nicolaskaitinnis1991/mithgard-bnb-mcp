@@ -1,3 +1,4 @@
+import type { DemoOutput } from '../host-data/contracts.js';
 import type {
   CalendarOptimizerInputT,
   CalendarOptimizerOutputT,
@@ -22,7 +23,9 @@ const SUGGESTIONS: ('discount' | 'min_stay_relax' | 'block')[] = [
   'min_stay_relax',
 ];
 
-export const computeCalendar = (input: CalendarOptimizerInputT): CalendarOptimizerOutputT => {
+export const computeCalendar = (
+  input: CalendarOptimizerInputT,
+): DemoOutput<CalendarOptimizerOutputT> => {
   const referenceDate = input.reference_date ?? currentUtcDate();
   const seed = fnv1a(`${input.listing_id}:${String(input.horizon_days)}`);
   const numGaps = 3 + (seed % 3); // 3..5 gaps

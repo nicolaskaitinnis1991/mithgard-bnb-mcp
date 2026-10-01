@@ -11,7 +11,10 @@ const makeTool = (handler: () => Promise<unknown>, description = 'Public test') 
     name: 'test',
     description,
     schema: z.object({}).strict(),
-    output: z.object({ ok: z.boolean() }),
+    output: z.object({
+      ok: z.boolean(),
+      _source: z.enum(['public', 'provided', 'demo', 'local']).optional(),
+    }),
     handler,
   });
 
@@ -128,12 +131,10 @@ describe('local operations agent', () => {
       failureThreshold: 1,
     });
     const base = makeTool(() => Promise.resolve({ ok: true }));
-    const invoke = vi
-      .fn()
-      .mockResolvedValue({
-        isError: true,
-        content: [{ type: 'text', text: '{"kind":"UpstreamHTTP"}' }],
-      });
+    const invoke = vi.fn().mockResolvedValue({
+      isError: true,
+      content: [{ type: 'text', text: '{"kind":"UpstreamHTTP"}' }],
+    });
     const tool = agent.supervise({ ...base, handler: invoke });
     await tool.handler({});
     clock = 11;
@@ -155,5 +156,135 @@ describe('local operations agent', () => {
     await probe;
     expect(agent.snapshot().active_calls).toBe(0);
     expect(agent.snapshot().status).toBe('healthy');
+  });
+
+  it('[OPS] never trips the upstream circuit for local queue deadlines or overload', async () => {
+    const agent = new OperationsAgent(log, { failureThreshold: 1 });
+    const invoke = vi.fn().mockResolvedValue({
+      error: 'local deadline',
+      kind: 'TransportFailed',
+      reason: 'QueueTimeout',
+    });
+    const tool = agent.supervise(makeTool(invoke));
+    for (let i = 0; i < 6; i++) await tool.handler({});
+    expect(agent.snapshot().recovery_count).toBe(0);
+    expect(agent.snapshot().tools[0]).toMatchObject({
+      consecutive_failures: 0,
+      cooldown_until: null,
+    });
+    invoke.mockResolvedValue({
+      error: 'local quota',
+      kind: 'RateLimited',
+      retry_after_ms: 3_600_000,
+      scope: 'local',
+    });
+    for (let i = 0; i < 6; i++) await tool.handler({});
+    expect(agent.snapshot().recovery_count).toBe(0);
+    expect(agent.snapshot().tools[0]).toMatchObject({
+      consecutive_failures: 0,
+      cooldown_until: null,
+    });
+  });
+
+  it('[OPS] ignores an old failure and long Retry-After after a newer successful recovery', async () => {
+    let clock = 0;
+    let finish: (value: unknown) => void = () => undefined;
+    const invoke = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finish = resolve;
+          }),
+      )
+      .mockResolvedValueOnce({ error: 'unavailable', kind: 'UpstreamHTTP' })
+      .mockResolvedValueOnce({ ok: true });
+    const agent = new OperationsAgent(log, {
+      now: () => clock,
+      cooldownMs: 100,
+      failureThreshold: 1,
+    });
+    const tool = agent.supervise(makeTool(invoke));
+    const old = tool.handler({});
+    await tool.handler({});
+    clock = 101;
+    await tool.handler({});
+    finish({ error: 'late throttle', kind: 'RateLimited', retry_after_ms: 120_000 });
+    await old;
+    expect(agent.snapshot().status).toBe('healthy');
+    expect(agent.snapshot().tools[0]).toMatchObject({
+      consecutive_failures: 0,
+      cooldown_until: null,
+      last_error_kind: null,
+      errors: 2,
+      successes: 1,
+    });
+    expect(agent.snapshot().recovery_count).toBe(1);
+  });
+
+  it('[OPS] extends the same outage cooldown for a delayed longer Retry-After', async () => {
+    let clock = 0;
+    let finish: (value: unknown) => void = () => undefined;
+    const invoke = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finish = resolve;
+          }),
+      )
+      .mockResolvedValue({ error: 'unavailable', kind: 'UpstreamHTTP' });
+    const agent = new OperationsAgent(log, {
+      now: () => clock,
+      cooldownMs: 100,
+      failureThreshold: 1,
+    });
+    const tool = agent.supervise(makeTool(invoke));
+    const old = tool.handler({});
+    await tool.handler({});
+    clock = 1;
+    finish({ error: 'late throttle', kind: 'RateLimited', retry_after_ms: 120_000 });
+    await old;
+    expect(agent.snapshot().tools[0]?.cooldown_until).toBe(120_001);
+    clock = 101;
+    expect((await tool.handler({})).isError).toBe(true);
+    expect(invoke).toHaveBeenCalledTimes(2);
+  });
+
+  it('[OPS] keeps provided/demo/local provenance separate and expires observed public health', async () => {
+    let clock = 0;
+    const agent = new OperationsAgent(log, { now: () => clock, healthFreshnessMs: 100 });
+    const invoke = vi.fn().mockResolvedValue({ ok: true, _source: 'provided' });
+    const tool = agent.supervise(makeTool(invoke));
+    await tool.handler({});
+    expect(agent.snapshot().status).toBe('unverified');
+    expect(agent.snapshot().tools[0]?.observed_sources.provided).toBe(1);
+    invoke.mockResolvedValue({ ok: true, _source: 'public' });
+    await tool.handler({});
+    expect(agent.snapshot().status).toBe('healthy');
+    clock = 101;
+    expect(agent.snapshot().status).toBe('unverified');
+    expect(agent.snapshot().health_scope).toContain('No active probes');
+  });
+
+  it('[OPS] reports busy, circuit and shutdown rejections without retaining caller content', async () => {
+    let finish: (value: { ok: boolean }) => void = () => undefined;
+    const agent = new OperationsAgent(log, { maxActive: 1 });
+    const tool = agent.supervise(
+      makeTool(
+        () =>
+          new Promise((resolve) => {
+            finish = resolve;
+          }),
+      ),
+    );
+    const first = tool.handler({});
+    await tool.handler({ guest: 'PRIVATE' });
+    finish({ ok: true });
+    await first;
+    agent.close();
+    await tool.handler({});
+    expect(agent.snapshot().tools[0]?.rejections).toMatchObject({ busy: 1, closed: 1 });
+    expect(JSON.stringify(agent.snapshot())).not.toContain('PRIVATE');
   });
 });

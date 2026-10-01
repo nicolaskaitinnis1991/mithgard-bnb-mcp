@@ -8,7 +8,7 @@ export const buildCalendarOptimizerTool = (log: Logger, debug = false): ToolDefi
   createTool({
     name: 'calendar_optimizer',
     description:
-      '[DEMO — requires Airbnb Partner API] Detects calendar gaps in a 30/60/90-day horizon and recommends discount / min-stay-relax / block actions; performs no calendar writes.',
+      '[LOCAL] Detects available gaps and minimum-stay conflicts in caller-supplied calendar nights with mode=provided, over 30/60/90 days. Synthetic demo is available with mode=demo or omitted mode; performs no calendar writes or synchronization.',
     schema: CalendarOptimizerInput,
     output: CalendarOptimizerOutput,
     handler: withTelemetry(log, 'calendar_optimizer', calendarOptimizerHandler, { debug }),

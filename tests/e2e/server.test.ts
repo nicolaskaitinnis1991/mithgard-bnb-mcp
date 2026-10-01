@@ -3,7 +3,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 
 describe('server e2e', () => {
-  it('initializes, publishes ten tools and closes the child transport', async () => {
+  it('initializes, publishes eleven tools and closes the child transport', async () => {
     const transport = new StdioClientTransport({
       command: process.execPath,
       args: ['--import', 'tsx', 'src/index.ts'],
@@ -14,7 +14,8 @@ describe('server e2e', () => {
     try {
       await client.connect(transport);
       const { tools } = await client.listTools();
-      expect(tools).toHaveLength(10);
+      expect(tools).toHaveLength(11);
+      expect(tools.find((tool) => tool.name === 'host_workflow')).toBeDefined();
       expect(tools.find((tool) => tool.name === 'operations_status')).toBeDefined();
     } finally {
       await client.close();

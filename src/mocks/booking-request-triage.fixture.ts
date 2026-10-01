@@ -1,3 +1,4 @@
+import type { DemoOutput } from '../host-data/contracts.js';
 import type {
   BookingTriageInputT,
   BookingTriageOutputT,
@@ -15,7 +16,7 @@ const yearsSince = (iso: string, referenceDate: string): number => {
   return ms / (1000 * 60 * 60 * 24 * 365.25);
 };
 
-export const computeTriage = (input: BookingTriageInputT): BookingTriageOutputT => {
+export const computeTriage = (input: BookingTriageInputT): DemoOutput<BookingTriageOutputT> => {
   const reasoning: string[] = [];
   const red: string[] = [];
   const green: string[] = [];
@@ -78,8 +79,7 @@ export const computeTriage = (input: BookingTriageInputT): BookingTriageOutputT 
   }
 
   if (input.trip.reason !== undefined && input.trip.reason.length > 10) {
-    score -= 5;
-    green.push('Guest provided trip reason.');
+    reasoning.push('Trip reason is unverified context; its length does not establish trust.');
   }
 
   // Clamp 0..100

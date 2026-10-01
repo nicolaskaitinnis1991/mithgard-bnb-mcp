@@ -8,7 +8,7 @@ export const buildReviewResponderTool = (log: Logger, debug = false): ToolDefini
   createTool({
     name: 'review_responder',
     description:
-      '[DEMO — requires Airbnb Partner API] Drafts a host-voiced response to a guest review, classifies sentiment, and flags escalation cases. Requires host approval and performs no posting.',
+      '[LOCAL] Drafts rule-based EN/DE review replies using caller-supplied concerns and confirmed actions with mode=provided, and flags escalation. Synthetic demo is available with mode=demo or omitted mode. Requires host approval; performs no posting.',
     schema: ReviewResponderInput,
     output: ReviewResponderOutput,
     handler: withTelemetry(log, 'review_responder', reviewResponderHandler, { debug }),

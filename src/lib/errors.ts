@@ -1,5 +1,5 @@
 export type McpError =
-  | { kind: 'RateLimited'; retry_after_ms: number; source: string }
+  | { kind: 'RateLimited'; retry_after_ms: number; source: string; scope?: 'local' | 'upstream' }
   | { kind: 'UpstreamHTTP'; status: number; url: string; body?: string }
   | { kind: 'ParseFailed'; selector: string; url: string; cause?: string }
   | { kind: 'ValidationFailed'; field: string; message: string }
@@ -7,7 +7,13 @@ export type McpError =
   | { kind: 'TransportFailed'; url: string; reason: TransportFailureReason; message: string };
 
 export type TransportFailureReason =
-  'Network' | 'Timeout' | 'ResponseTooLarge' | 'QueueFull' | 'Closed' | 'Cancelled';
+  | 'Network'
+  | 'Timeout'
+  | 'QueueTimeout'
+  | 'ResponseTooLarge'
+  | 'QueueFull'
+  | 'Closed'
+  | 'Cancelled';
 
 export const transportFailed = (
   url: string,
@@ -15,10 +21,15 @@ export const transportFailed = (
   message: string,
 ): McpError => ({ kind: 'TransportFailed', url, reason, message });
 
-export const rateLimited = (retry_after_ms: number, source: string): McpError => ({
+export const rateLimited = (
+  retry_after_ms: number,
+  source: string,
+  scope: 'local' | 'upstream' = 'upstream',
+): McpError => ({
   kind: 'RateLimited',
   retry_after_ms,
   source,
+  scope,
 });
 export const upstreamHTTP = (status: number, url: string, body?: string): McpError =>
   body === undefined

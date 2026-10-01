@@ -1,13 +1,15 @@
 # Limitations and maturity
 
-This is an alpha portfolio project. Two tools read public Airbnb pages, seven host workflow tools use deterministic synthetic fixtures, and a local agent reports process observations. No authenticated Partner API, real booking data or host write is implemented.
+Alpha portfolio project: two public page readers, seven supplied-data host-analysis engines with explicit synthetic demos, a bounded deterministic workflow and a local operations supervisor. No authenticated Airbnb/PMS API or business write is implemented.
 
-Public HTML can change, return a challenge, be blocked or omit requested facts. Parser fixture success does not establish current live availability. Missing facts remain null; unsupported shapes return a tool error. Cached observations may be stale within the configured TTL.
+Provided input authenticity, completeness and freshness are caller assertions. The server validates format/ranges and identifies missing fields; it does not verify that supplied facts match an actual account. Pricing is configured rule calculation with conditional amounts, not a calibrated revenue forecast. Triage is an explainable policy/profile heuristic, not an automatic booking decision. Message/review classification supports finite DE/EN patterns and supplied context; open-ended understanding and real host feedback remain external evaluations. Every draft requires approval.
 
-Demo prices, occupancy, revenue and triage scores are illustrative, not calibrated financial recommendations or measured customer results. Guest and review outputs are drafts. Missing context must be checked. Turnover planning checks basic time windows, not staffing availability or travel time.
+Calendar unknowns never become free nights. Turnover plans use supplied task durations, buffers, availability and existing assignments; they do not contact a cleaner or account for unspecified travel/skills. No planned assignment is a confirmed one. The workflow verifies advertised output contracts and propagates approvals; a technical pass does not certify the business facts. It does not call an LLM, recursively plan, repair code or pass one result automatically into later arguments.
 
-The operations agent can contain repeated observed failures, clear local caches and permit a recovery probe. It cannot guarantee availability, restart a crashed process, diagnose every cause, deploy fixes or replace an external supervisor. Its healthy status applies only to calls observed during this process lifetime.
+Public HTML may change, be blocked or omit facts. Fixture tests do not guarantee live availability. Cached observations can be stale within TTL. Queue, deadline, byte and count budgets limit work but do not establish whole-process heap or uptime guarantees.
 
-Automated personas and 2,000-call synthetic tests cover software scenarios and bounded concurrency. They are not human acceptance, an internet-scale benchmark or Airbnb load testing. Authentication, a real provider adapter, target integration tests and actual user feedback remain required for real host deployment.
+Operations health concerns recent public observations in this process. Provided/demo calls cannot establish it. Recovery clears caches and permits a later observed probe; it does not diagnose every cause, restart a crash or deliver an external alert. A service manager and configured destinations are needed for those capabilities.
 
-See [the dated verification report](readiness-2026-10-01.md) for checked evidence. Older specifications, audits, pitch material and build plans are historical references.
+Synthetic multi-tool and constrained-container tests establish the documented local scenarios. They do not replace human acceptance, authorized provider contract tests, target Base360 integration or an internet-scale SLA. Syntax-tree inventories and coverage do not prove every line correct. Exact command exits/source fingerprints/test names are produced by `npm run acceptance`; open external gates remain in [the plan](acceptance-plan.md).
+
+Older May specifications/audits/pitch material and [the October1 report](readiness-2026-10-01.md) are historical snapshots; do not reuse their counts as current evidence.

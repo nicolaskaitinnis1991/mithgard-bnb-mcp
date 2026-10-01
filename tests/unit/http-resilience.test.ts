@@ -147,7 +147,7 @@ describe('bounded HTTP transport', () => {
     await http.close();
   });
 
-  it('returns an hourly budget error without waiting for a one-hour queue timer', async () => {
+  it('[OPS] reports hourly budget exhaustion as local without waiting for a one-hour queue timer', async () => {
     const pool = mockAgent.get('https://resilience.test');
     pool.intercept({ path: '/hour' }).reply(200, 'ok');
     const http = client({ ratePerHour: 1 });
@@ -155,7 +155,7 @@ describe('bounded HTTP transport', () => {
     const start = Date.now();
     expect(await http.get('https://resilience.test/hour')).toMatchObject({
       ok: false,
-      error: { kind: 'RateLimited' },
+      error: { kind: 'RateLimited', scope: 'local' },
     });
     expect(Date.now() - start).toBeLessThan(1000);
     expect(http.status().attempts).toBe(1);

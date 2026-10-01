@@ -17,3 +17,6 @@ coverage/
 # Audit-watcher artifact — file belongs to the watcher process, not this repo.
 audit.md
 audit-*.md
+
+# Machine-generated acceptance logs and test results
+reports/

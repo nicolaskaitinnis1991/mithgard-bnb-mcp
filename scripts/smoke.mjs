@@ -18,6 +18,7 @@ const transport = new StdioClientTransport(
           '--rm',
           '-i',
           '--read-only',
+          '--network=none',
           '--cap-drop=ALL',
           '--security-opt=no-new-privileges',
           '--memory=256m',
@@ -36,20 +37,48 @@ const deadline = setTimeout(() => {
 try {
   await client.connect(transport);
   const { tools } = await client.listTools();
-  assert.equal(tools.length, 10);
-  assert.equal(tools.filter((tool) => tool.description?.startsWith('[DEMO')).length, 7);
+  assert.equal(tools.length, 11);
+  assert.equal(
+    tools.filter((tool) =>
+      [
+        'host_insights',
+        'guest_message_assistant',
+        'booking_request_triage',
+        'smart_pricing',
+        'calendar_optimizer',
+        'review_responder',
+        'turnover_coordinator',
+      ].includes(tool.name),
+    ).length,
+    7,
+  );
   const status = await client.callTool({ name: 'operations_status', arguments: {} });
   assert.equal(status.isError, false);
   assert.equal(status.structuredContent?.status, 'unverified');
   const demo = await client.callTool({ name: 'host_insights', arguments: { listing_id: '12345' } });
   assert.equal(demo.structuredContent?._mock, true);
+  const planned = await client.callTool({
+    name: 'host_workflow',
+    arguments: {
+      steps: [{ id: 'insights', tool: 'host_insights', arguments: { listing_id: '12345' } }],
+    },
+  });
+  assert.equal(planned.structuredContent?.execution_status, 'planned');
+  const executed = await client.callTool({
+    name: 'host_workflow',
+    arguments: {
+      mode: 'execute',
+      steps: [{ id: 'insights', tool: 'host_insights', arguments: { listing_id: '12345' } }],
+    },
+  });
+  assert.equal(executed.structuredContent?.execution_status, 'verified');
   const bad = await client.callTool({
     name: 'airbnb_search',
     arguments: { location: '', checkin: '2026-02-30' },
   });
   assert.equal(bad.isError, true);
   process.stdout.write(
-    'MCP handshake, 10 contracts, demo labelling, operations agent and invalid-input smoke passed\n',
+    'MCP handshake, 11 contracts, demo provenance, operations, workflow plan/execute and invalid-input smoke passed\n',
   );
 } finally {
   clearTimeout(deadline);

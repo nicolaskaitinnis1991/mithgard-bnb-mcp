@@ -1,77 +1,103 @@
 # smart_pricing
 
-Explainable sample nightly prices. **Demo only:** output always carries `_mock: true`. This tool has no Airbnb Partner API connection and performs no external action. Treat results as examples, never as observed host data.
+Calculates bounded suggestions from supplied base prices and owner-defined factors. No price is changed and no market demand is fetched.
 
-## Contract
+## Mode and evidence
 
-- `listing_id`: nonempty identifier, at most 200 characters.
-- `from`, `to`: real `YYYY-MM-DD` dates, both inclusive.
-- `to` must be on or after `from`; the inclusive span must be at most 30 days. Longer ranges fail validation rather than truncating silently.
+`mode: "provided"` requires `host_data`. Passing data without that mode, or omitting data in that mode, fails validation; there is no fixture fallback. With `mode: "demo"` (or no mode and no data), the existing synthetic fixture runs instead.
 
-The listing hash supplies a sample EUR base rate of 70–150. Weekday increments and a fixed global monthly table modify it. This has no local market, event, weather, booking or competitor data. `summary.total_revenue_estimate` is the sum of all suggested nights assuming they are all booked, before fees and costs; it is not an occupancy-adjusted revenue forecast. This assumption is explicit in `estimate_basis: "all_nights_booked_before_fees"`.
+Every result has `_source`, `_mock`, and `data_evidence`. Provided calculations use `_source: "provided", _mock: false`; this means calculated from caller assertions, not authenticated/imported account data. Evidence includes the caller's `as_of` timestamp, IANA `timezone`, `currency`, `complete`, and detected `missing_fields`. `complete: true` is only retained when the source asserts completeness and required calculation facts are present. Demo evidence has `as_of: null`, `complete: false`, and `missing_fields: ["synthetic_data"]`.
 
-Monthly factors Jan→Dec: `0.85, 0.85, 0.95, 1.05, 1.10, 1.15, 1.20, 1.20, 1.05, 1.00, 0.90, 1.10`. Weekday increments: Sun/Mon/Tue 0, Wed +5, Thu +15, Fri/Sat +25 EUR. No prices are changed.
+Metadata is required in every supplied dataset. Supported currencies are EUR, GBP, USD, CAD, AUD and CHF; money supports up to two decimals, nonnegative values and a maximum of 1,000,000 per supplied amount. No currency conversion occurs. Input objects reject unknown fields; strings, arrays, dates and amounts are bounded. Outputs are validated at the MCP boundary.
 
-All inputs reject unknown fields. Identifiers and free text are bounded. Invalid input produces an MCP tool error before the handler runs. Outputs are validated against the registered Zod schema.
+## Supplied-data contract and calculation
 
-## Reproducible offline example
+- `listing_id`: nonempty ID up to 200 characters; no hash influences provided prices.
+- `from`, `to`: inclusive real dates, ordered, at most 30 dates.
+- `host_data.nights`: at most 366 distinct nightly records; only explicitly `available` nights are priced.
+- Required `min_price`, `max_price` must be ordered. A nightly `price` takes precedence over optional explicit `base_price`. Without either, the date is skipped as `missing_price`.
+- Optional `weekday_factors`: exactly seven factors, Sunday index 0 through Saturday index 6. Optional `date_factors`: at most 30 unique `{date, factor}` records. Factors are 0.1–5; absent factors are 1.
 
-This input/output pair was generated from the fixture handler, not from a real host account. Dates are explicit for reproducibility.
+Suggestion = base × weekday factor × date factor, rounded to cents and clamped to supplied bounds. Reasons state these actual supplied inputs. Booked, owner-blocked, cancelled, absent and unknown nights are not priced. `skipped_dates` distinguishes the causes. Missing baselines/unknown dates make evidence incomplete. `current` is the supplied baseline, not a read of the channel's current price. Zero baseline omits the undefined percentage delta.
 
-Input:
+`currency` is preserved without conversion. `summary.total_revenue_estimate` sums only calculated suggestions assuming **every suggested night is booked before fees** (`estimate_basis: all_nights_booked_before_fees`); it is not an occupancy/demand/revenue forecast. Empty suggestions give total 0 and `avg_suggested: null`. In demo mode, both base and factors are synthetic.
+
+## Reproducible synthetic example
+
+These caller facts are synthetic test data, not a real property account. Input:
 
 ```json
 {
-  "listing_id": "12345",
-  "from": "2026-10-01",
-  "to": "2026-10-03"
+  "mode": "provided",
+  "listing_id": "synthetic-property",
+  "from": "2026-06-01",
+  "to": "2026-06-02",
+  "host_data": {
+    "as_of": "2026-06-03T09:00:00Z",
+    "timezone": "Europe/Berlin",
+    "currency": "GBP",
+    "complete": true,
+    "nights": [
+      {
+        "date": "2026-06-01",
+        "state": "available",
+        "price": 100
+      },
+      {
+        "date": "2026-06-02",
+        "state": "booked"
+      }
+    ],
+    "min_price": 80,
+    "max_price": 120,
+    "date_factors": [
+      {
+        "date": "2026-06-01",
+        "factor": 1.25
+      }
+    ]
+  }
 }
 ```
 
-Output:
+Selected output fields (the full result also includes evidence and other validated fields):
 
 ```json
 {
+  "_source": "provided",
+  "_mock": false,
+  "currency": "GBP",
   "daily_prices": [
     {
-      "date": "2026-10-01",
-      "suggested": 127,
-      "reasons": [
-        "Weekday uplift (+15 EUR)"
-      ]
-    },
-    {
-      "date": "2026-10-02",
-      "suggested": 137,
-      "reasons": [
-        "Weekend uplift (+25 EUR)"
-      ]
-    },
-    {
-      "date": "2026-10-03",
-      "suggested": 137,
-      "reasons": [
-        "Weekend uplift (+25 EUR)"
-      ]
+      "date": "2026-06-01",
+      "current": 100,
+      "suggested": 120,
+      "delta_pct": 20
     }
   ],
-  "currency": "EUR",
+  "skipped_dates": [
+    {
+      "date": "2026-06-02",
+      "reason": "booked"
+    }
+  ],
   "estimate_basis": "all_nights_booked_before_fees",
   "summary": {
-    "avg_suggested": 134,
-    "total_revenue_estimate": 401
-  },
-  "_mock": true,
-  "_pitch": "Per-day pricing with explainable factors"
+    "avg_suggested": 120,
+    "total_revenue_estimate": 120
+  }
 }
 ```
 
-## Source and validation
+## External prerequisites and acceptance
+
+Live market data, occupancy forecasting and actual channel price writes are separate integration/evaluation tasks.
 
 - [Schema](../../src/tools/smart-pricing/schema.ts)
 - [Handler](../../src/tools/smart-pricing/handler.ts)
-- [Fixture](../../src/mocks/smart-pricing.fixture.ts)
-- [Synthetic host regression scenarios](../../tests/integration/virtual-host-scenarios.test.ts)
-- [Limitations](../limitations.md)
+- [Strict host-data contracts](../../src/host-data/contracts.ts)
+- [Local calculation engines](../../src/host-data/engines.ts)
+- [Provided-data acceptance scenarios](../../tests/integration/provided-host-data.test.ts)
+- [Saved acceptance plan](../acceptance-plan.md)
 
-Synthetic scenarios are automated acceptance tests. They do not constitute human user testing.
+Automated scenarios and synthetic load are technical evidence, not human host acceptance.

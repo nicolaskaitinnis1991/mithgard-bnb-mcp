@@ -1,70 +1,93 @@
 # turnover_coordinator
 
-Sample crew briefing and time-window checks. **Demo only:** output always carries `_mock: true`. This tool has no Airbnb Partner API connection and performs no external action. Treat results as examples, never as observed host data.
+Proposes a serial task schedule using supplied duration, cleaner availability and existing assignments. Feasibility is arithmetic over caller data; no cleaner is booked or contacted.
 
-## Contract
+## Mode and evidence
 
-- `listing_id`: nonempty identifier, at most 200 characters.
-- `checkout_at`, `checkin_at`: real ISO timestamps with `Z` or an explicit offset (e.g. `+02:00`). Timezone-free and malformed timestamps fail validation.
-- Check-in must be strictly after checkout.
-- `cleaner_id`: optional nonempty identifier, at most 200 characters.
+`mode: "provided"` requires `host_data`. Passing data without that mode, or omitting data in that mode, fails validation; there is no fixture fallback. With `mode: "demo"` (or no mode and no data), the existing synthetic fixture runs instead.
 
-The output formats timestamps in UTC and supplies a fixed illustrative checklist and hash-selected duration of 90, 120 or 150 minutes. `window_minutes` records the actual elapsed window; `feasible` compares the sample duration to that window. A too-short window and absent cleaner assignment produce warnings. This is only arithmetic over a sample estimate, not confirmation that a crew is available or that the property will be ready.
+Every result has `_source`, `_mock`, and `data_evidence`. Provided calculations use `_source: "provided", _mock: false`; this means calculated from caller assertions, not authenticated/imported account data. Evidence includes the caller's `as_of` timestamp, IANA `timezone`, `currency`, `complete`, and detected `missing_fields`. `complete: true` is only retained when the source asserts completeness and required calculation facts are present. Demo evidence has `as_of: null`, `complete: false`, and `missing_fields: ["synthetic_data"]`.
 
-`cleaner_id` identifies a proposed cleaner. No crew is assigned or contacted. Every output sets `approval_required: true`; verify the property-specific checklist, equipment, duration, cleaner availability and local times before approving a crew message.
+Metadata is required in every supplied dataset. Supported currencies are EUR, GBP, USD, CAD, AUD and CHF; money supports up to two decimals, nonnegative values and a maximum of 1,000,000 per supplied amount. No currency conversion occurs. Input objects reject unknown fields; strings, arrays, dates and amounts are bounded. Outputs are validated at the MCP boundary.
 
-All inputs reject unknown fields. Identifiers and free text are bounded. Invalid input produces an MCP tool error before the handler runs. Outputs are validated against the registered Zod schema.
+## Supplied-data contract and calculation
 
-## Reproducible offline example
+- `listing_id`: nonempty ID up to 200 characters.
+- `checkout_at`, `checkin_at`: real ISO timestamps with Z or explicit UTC offset. Check-in must follow checkout. `cleaner_id` optionally restricts candidates to that supplied cleaner.
+- `host_data.tasks`: 1–30 distinct `{id, title, duration_min}` tasks. IDs max80 characters, titles max100, each duration1–480 minutes.
+- Required `buffer_min`: 0–240. Tasks run sequentially on one proposed cleaner; parallel task execution/travel/material constraints are not inferred.
+- `cleaners`: at most20 distinct IDs, each with `available` and `assignments` arrays (at most50 positive `{start,end}` intervals each). No contact data is required.
 
-This input/output pair was generated from the fixture handler, not from a real host account. Dates are explicit for reproducibility.
+Required duration is sum(task minutes) + buffer. The engine chooses the earliest fitting supplied availability window, skips conflicting assignments, and checks that the complete sequence plus buffer finishes before both availability end and check-in. A selected cleaner remains `assignment_status: proposed_only`. Source complete=false cannot yield feasible=true; absent requested cleaner, insufficient availability or conflicts can make a long overall window infeasible.
 
-Input:
+Elapsed arithmetic uses timestamp instants/UTC, including offset changes at DST transitions. `scheduled_tasks`, `planned_start`, `planned_end` are ISO UTC timestamps; the end includes the buffer. `local_window` and the draft show the supplied IANA timezone. Without a fitting candidate, planned start/end and cleaner are null and scheduled_tasks is empty. Every result requires approval. Demo durations and checklists are illustrative rather than property-specific.
+
+## Reproducible synthetic example
+
+These caller facts are synthetic test data, not a real property account. Input:
 
 ```json
 {
-  "listing_id": "12345",
-  "checkout_at": "2026-10-01T11:00:00+02:00",
-  "checkin_at": "2026-10-01T11:30:00+02:00",
-  "cleaner_id": "demo-crew"
+  "mode": "provided",
+  "listing_id": "synthetic-property",
+  "checkout_at": "2026-06-01T12:00:00+02:00",
+  "checkin_at": "2026-06-01T15:00:00+02:00",
+  "host_data": {
+    "as_of": "2026-06-03T09:00:00Z",
+    "timezone": "Europe/Berlin",
+    "currency": "EUR",
+    "complete": true,
+    "tasks": [
+      {
+        "id": "clean",
+        "title": "Clean apartment",
+        "duration_min": 120
+      }
+    ],
+    "buffer_min": 30,
+    "cleaners": [
+      {
+        "id": "synthetic-crew",
+        "available": [
+          {
+            "start": "2026-06-01T09:00:00Z",
+            "end": "2026-06-01T15:00:00Z"
+          }
+        ],
+        "assignments": []
+      }
+    ]
+  }
 }
 ```
 
-Output:
+Selected output fields (the full result also includes evidence and other validated fields):
 
 ```json
 {
-  "brief": "Turnover for listing 12345\nCheckout: 2026-10-01 09:00 UTC → Check-in: 2026-10-01 09:30 UTC\nEstimated duration: 120 min\nProposed cleaner: demo-crew",
-  "approval_required": true,
-  "window_minutes": 30,
-  "feasible": false,
-  "warnings": [
-    "Cleaning estimate exceeds the available turnover window; resolve before assigning.",
-    "Demo checklist and duration are illustrative, not listing-specific or a confirmed crew booking."
-  ],
-  "checklist": [
-    "Strip and replace all bed linens (master + guest bedrooms)",
-    "Clean and sanitize bathrooms (toilet, shower, sink, mirrors)",
-    "Wipe kitchen surfaces, run dishwasher, restock essentials",
-    "Vacuum and mop all floors",
-    "Empty all trash bins; replace liners",
-    "Restock toiletries, towels, coffee, tea, water",
-    "Inspect for damages or missing items; photograph any issues",
-    "Final walk-through and lock-up; confirm key/lockbox status"
-  ],
-  "crew_message_draft": "Hi! Quick turnover at listing 12345:\n- Checkout 2026-10-01 at 09:00 UTC\n- Next check-in 2026-10-01 at 09:30 UTC\n- Estimated 120 min\nDraft only: confirm assignment, checklist, supplies and time window before sending. Reply when started/done. Thanks!",
+  "_source": "provided",
+  "_mock": false,
+  "window_minutes": 180,
   "estimated_duration_min": 120,
-  "_mock": true,
-  "_pitch": "Coordinates turnover end-to-end with crew briefing and handover checklist"
+  "required_duration_min": 150,
+  "feasible": true,
+  "proposed_cleaner_id": "synthetic-crew",
+  "assignment_status": "proposed_only",
+  "planned_start": "2026-06-01T10:00:00.000Z",
+  "planned_end": "2026-06-01T12:30:00.000Z",
+  "approval_required": true
 }
 ```
 
-## Source and validation
+## External prerequisites and acceptance
+
+Real assignment, crew acknowledgement, travel/stock constraints, status tracking and messaging require a separately authorized provider.
 
 - [Schema](../../src/tools/turnover-coordinator/schema.ts)
 - [Handler](../../src/tools/turnover-coordinator/handler.ts)
-- [Fixture](../../src/mocks/turnover-coordinator.fixture.ts)
-- [Synthetic host regression scenarios](../../tests/integration/virtual-host-scenarios.test.ts)
-- [Limitations](../limitations.md)
+- [Strict host-data contracts](../../src/host-data/contracts.ts)
+- [Local calculation engines](../../src/host-data/engines.ts)
+- [Provided-data acceptance scenarios](../../tests/integration/provided-host-data.test.ts)
+- [Saved acceptance plan](../acceptance-plan.md)
 
-Synthetic scenarios are automated acceptance tests. They do not constitute human user testing.
+Automated scenarios and synthetic load are technical evidence, not human host acceptance.

@@ -8,7 +8,7 @@ export const buildHostInsightsTool = (log: Logger, debug = false): ToolDefinitio
   createTool({
     name: 'host_insights',
     description:
-      '[DEMO — requires Airbnb Partner API] Returns occupancy, revenue, competitor delta, and pricing recommendations per listing.',
+      '[LOCAL] Calculates occupancy, revenue, ADR and RevPAR from caller-supplied host_data with mode=provided. Comparisons require supplied benchmark evidence. Synthetic demo is available with mode=demo or omitted mode; no automatic host import.',
     schema: HostInsightsInput,
     output: HostInsightsOutput,
     handler: withTelemetry(log, 'host_insights', hostInsightsHandler, { debug }),

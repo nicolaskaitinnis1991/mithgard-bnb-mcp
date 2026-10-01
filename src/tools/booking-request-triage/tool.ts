@@ -8,7 +8,7 @@ export const buildBookingRequestTriageTool = (log: Logger, debug = false): ToolD
   createTool({
     name: 'booking_request_triage',
     description:
-      '[DEMO — requires Airbnb Partner API] Risk-scores a booking request 0-100 with auditable reasoning. Returns a recommendation requiring host approval; performs no acceptance or rejection.',
+      '[LOCAL] Checks a booking request against caller-supplied capacity and house policies with mode=provided. Returns reasoning and a recommendation requiring host approval. Synthetic demo is available with mode=demo or omitted mode; performs no booking decision.',
     schema: BookingTriageInput,
     output: BookingTriageOutput,
     handler: withTelemetry(log, 'booking_request_triage', bookingTriageHandler, { debug }),

@@ -1,3 +1,4 @@
+import type { DemoOutput } from '../host-data/contracts.js';
 import type {
   ReviewResponderInputT,
   ReviewResponderOutputT,
@@ -7,6 +8,12 @@ export const REVIEW_RESPONDER_PITCH =
   'Auto-drafts review responses, flags escalation cases for human review';
 
 const ESCALATION_KEYWORDS = [
+  'exposed electrical',
+  'exposed wire',
+  'electrical wires',
+  'dangerous',
+  'freiliegende',
+  'stromschlag',
   'refund',
   'broken',
   'dirty',
@@ -23,7 +30,9 @@ const ESCALATION_KEYWORDS = [
   'schmutzig',
 ];
 
-export const computeReviewResponse = (input: ReviewResponderInputT): ReviewResponderOutputT => {
+export const computeReviewResponse = (
+  input: ReviewResponderInputT,
+): DemoOutput<ReviewResponderOutputT> => {
   const lower = input.review_text.toLowerCase();
   const hit = ESCALATION_KEYWORDS.find((k) => lower.includes(k));
 
@@ -60,7 +69,7 @@ export const computeReviewResponse = (input: ReviewResponderInputT): ReviewRespo
     }
   }
 
-  const out: ReviewResponderOutputT = {
+  const out: DemoOutput<ReviewResponderOutputT> = {
     draft,
     approval_required: true,
     sentiment,

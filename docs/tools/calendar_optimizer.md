@@ -1,87 +1,96 @@
 # calendar_optimizer
 
-Illustrative calendar gaps. **Demo only:** output always carries `_mock: true`. This tool has no Airbnb Partner API connection and performs no external action. Treat results as examples, never as observed host data.
+Finds contiguous runs of explicitly available nights and real minimum-stay conflicts in supplied calendar data. No calendar is synchronized or changed.
 
-## Contract
+## Mode and evidence
 
-- `listing_id`: nonempty identifier, at most 200 characters.
-- `horizon_days`: exactly 30 (default), 60, or 90.
-- `reference_date`: optional real `YYYY-MM-DD`; defaults to current UTC date.
+`mode: "provided"` requires `host_data`. Passing data without that mode, or omitting data in that mode, fails validation; there is no fixture fallback. With `mode: "demo"` (or no mode and no data), the existing synthetic fixture runs instead.
 
-The listing/horizon hash generates 3–5 synthetic, nonoverlapping gaps within the requested horizon. Each `end` is exclusive; `nights` equals the date difference. This tool does not read availability or bookings. Its example gaps remain synthetic even if the real property is fully booked.
+Every result has `_source`, `_mock`, and `data_evidence`. Provided calculations use `_source: "provided", _mock: false`; this means calculated from caller assertions, not authenticated/imported account data. Evidence includes the caller's `as_of` timestamp, IANA `timezone`, `currency`, `complete`, and detected `missing_fields`. `complete: true` is only retained when the source asserts completeness and required calculation facts are present. Demo evidence has `as_of: null`, `complete: false`, and `missing_fields: ["synthetic_data"]`.
 
-Suggestions cycle through `discount`, `min_stay_relax` and `block`. `potential_recovery_eur` sums costs only for gaps that are not proposed for blocking. This is an illustrative upper bound, not guaranteed recoverable revenue. No calendar changes occur.
+Metadata is required in every supplied dataset. Supported currencies are EUR, GBP, USD, CAD, AUD and CHF; money supports up to two decimals, nonnegative values and a maximum of 1,000,000 per supplied amount. No currency conversion occurs. Input objects reject unknown fields; strings, arrays, dates and amounts are bounded. Outputs are validated at the MCP boundary.
 
-All inputs reject unknown fields. Identifiers and free text are bounded. Invalid input produces an MCP tool error before the handler runs. Outputs are validated against the registered Zod schema.
+## Supplied-data contract and calculation
 
-## Reproducible offline example
+- `listing_id`: nonempty ID up to 200 characters.
+- `reference_date`: optional real date; provided default is the UTC date of `host_data.as_of`.
+- `horizon_days`: 30 (default), 60 or 90; dates are calendar date keys in the source's timezone, without shifting their labels.
+- `host_data.nights`: at most 366 distinct `{date, state, price?, revenue?}` records. `min_nights`: optional minimum stay, 1–365.
 
-This input/output pair was generated from the fixture handler, not from a real host account. Dates are explicit for reproducibility.
+Only `available` creates a run. Booked/owner-blocked dates stop runs; absent/unknown/cancelled dates remain unknown and never become availability. A run bounded on both sides by actual booked dates is `orphan_gap`; otherwise it is `open_run`. `end` is exclusive. A run shorter than the supplied minimum stay yields `min_stay_conflict: true` and `suggestion: min_stay_relax`; missing rule means `null`/`review`, adequate length means `false`/`none`.
 
-Input:
+`opportunity_amount` sums only supplied nightly prices within that run, or is null if any price is missing. `opportunity_total` is null when the source/calendar is incomplete or any gap price is missing. It is conditional full-occupancy opportunity before fees, never observed loss or recoverable revenue. The legacy EUR aliases (`cost_estimate_eur`, `potential_recovery_eur`) are null for other currencies. No synthetic discounts, blocks or rates are introduced in provided mode.
+
+## Reproducible synthetic example
+
+These caller facts are synthetic test data, not a real property account. Input:
 
 ```json
 {
-  "listing_id": "12345",
+  "mode": "provided",
+  "listing_id": "synthetic-property",
+  "reference_date": "2026-06-01",
   "horizon_days": 30,
-  "reference_date": "2026-10-01"
+  "host_data": {
+    "as_of": "2026-06-03T09:00:00Z",
+    "timezone": "Europe/Berlin",
+    "currency": "EUR",
+    "complete": true,
+    "min_nights": 3,
+    "nights": [
+      {
+        "date": "2026-06-01",
+        "state": "booked"
+      },
+      {
+        "date": "2026-06-02",
+        "state": "available",
+        "price": 100
+      },
+      {
+        "date": "2026-06-03",
+        "state": "available",
+        "price": 100
+      },
+      {
+        "date": "2026-06-04",
+        "state": "booked"
+      }
+    ]
+  }
 }
 ```
 
-Output:
+Selected output fields (the full result also includes evidence and other validated fields):
 
 ```json
 {
+  "_source": "provided",
+  "_mock": false,
   "gaps": [
     {
-      "start": "2026-10-08",
-      "end": "2026-10-10",
+      "start": "2026-06-02",
+      "end": "2026-06-04",
       "nights": 2,
-      "cost_estimate_eur": 206,
-      "suggestion": "discount"
-    },
-    {
-      "start": "2026-10-12",
-      "end": "2026-10-15",
-      "nights": 3,
-      "cost_estimate_eur": 318,
-      "suggestion": "min_stay_relax"
-    },
-    {
-      "start": "2026-10-17",
-      "end": "2026-10-20",
-      "nights": 3,
-      "cost_estimate_eur": 327,
-      "suggestion": "discount"
-    },
-    {
-      "start": "2026-10-22",
-      "end": "2026-10-24",
-      "nights": 2,
-      "cost_estimate_eur": 186,
-      "suggestion": "block"
-    },
-    {
-      "start": "2026-10-26",
-      "end": "2026-10-29",
-      "nights": 3,
-      "cost_estimate_eur": 363,
-      "suggestion": "min_stay_relax"
+      "gap_kind": "orphan_gap",
+      "min_stay_conflict": true,
+      "suggestion": "min_stay_relax",
+      "opportunity_amount": 200
     }
   ],
-  "reference_date": "2026-10-01",
-  "potential_recovery_eur": 1214,
-  "_mock": true,
-  "_pitch": "Surfaces calendar gaps and concrete actions to recover lost nights"
+  "opportunity_total": null
 }
 ```
 
-## Source and validation
+## External prerequisites and acceptance
+
+The example deliberately supplies only four of thirty dates; evidence lists calendar_coverage and complete=false. Automatic calendar import/change needs an authorized provider.
 
 - [Schema](../../src/tools/calendar-optimizer/schema.ts)
 - [Handler](../../src/tools/calendar-optimizer/handler.ts)
-- [Fixture](../../src/mocks/calendar-optimizer.fixture.ts)
-- [Synthetic host regression scenarios](../../tests/integration/virtual-host-scenarios.test.ts)
-- [Limitations](../limitations.md)
+- [Strict host-data contracts](../../src/host-data/contracts.ts)
+- [Local calculation engines](../../src/host-data/engines.ts)
+- [Provided-data acceptance scenarios](../../tests/integration/provided-host-data.test.ts)
+- [Saved acceptance plan](../acceptance-plan.md)
 
-Synthetic scenarios are automated acceptance tests. They do not constitute human user testing.
+Automated scenarios and synthetic load are technical evidence, not human host acceptance.

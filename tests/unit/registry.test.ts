@@ -1,9 +1,15 @@
 import { describe, it, expect, vi } from 'vitest';
 import { z } from 'zod';
-import { createTool, toolError, wrapHandler } from '../../src/tools/registry.js';
+import {
+  createTool,
+  limitToolResponse,
+  MAX_TOOL_OUTPUT_BYTES,
+  toolError,
+  wrapHandler,
+} from '../../src/tools/registry.js';
 import { parseFailed, rateLimited, upstreamHTTP } from '../../src/lib/errors.js';
 
-describe('wrapHandler', () => {
+describe('[PROTO] wrapHandler', () => {
   const schema = z.object({ q: z.string().min(1) });
   // eslint-disable-next-line @typescript-eslint/require-await -- handler signature is async; test stub returns sync value.
   const handler = wrapHandler(schema, async (input) => ({ echo: input.q }));
@@ -92,6 +98,55 @@ describe('wrapHandler', () => {
     expect(result.content[0]?.text).not.toContain('private-source');
   });
 
+  it('preserves bounded rate-limit scope and queue-timeout reasons without free-form metadata', async () => {
+    const local = await wrapHandler(schema, () =>
+      Promise.resolve({
+        kind: 'RateLimited',
+        error: 'private-detail',
+        scope: 'local',
+        retry_after_ms: 1000,
+      }),
+    )({ q: 'valid' });
+    expect(JSON.parse(local.content[0]?.text ?? '{}')).toMatchObject({
+      kind: 'RateLimited',
+      scope: 'local',
+      retry_after_ms: 1000,
+    });
+    const timeout = await wrapHandler(schema, () =>
+      Promise.resolve({
+        kind: 'TransportFailed',
+        error: 'private-detail',
+        reason: 'QueueTimeout',
+        url: 'https://private.example',
+      }),
+    )({ q: 'valid' });
+    expect(JSON.parse(timeout.content[0]?.text ?? '{}')).toMatchObject({
+      kind: 'TransportFailed',
+      reason: 'QueueTimeout',
+    });
+    const invalidScope = await wrapHandler(schema, () =>
+      Promise.resolve({
+        kind: 'RateLimited',
+        error: 'private-detail',
+        scope: 'private-scope',
+      }),
+    )({ q: 'valid' });
+    expect(JSON.stringify([local, timeout, invalidScope])).not.toContain('private-');
+    expect(JSON.stringify(timeout)).not.toContain('private.example');
+  });
+
+  it.each(['Busy', 'Closed', 'CircuitOpen', 'Cancelled'])(
+    'preserves the safe %s machine-readable failure kind',
+    async (kind) => {
+      const result = await wrapHandler(schema, () =>
+        Promise.resolve({ kind, error: 'private-error-detail' }),
+      )({ q: 'valid' });
+      expect(result.isError).toBe(true);
+      expect(JSON.parse(result.content[0]?.text ?? '{}')).toMatchObject({ kind });
+      expect(result.content[0]?.text).not.toContain('private-error-detail');
+    },
+  );
+
   it('redacts upstream URLs, response bodies and parser causes from public errors', () => {
     const url = 'https://example.test/?token=private-test-token';
     const publicErrors = [
@@ -123,6 +178,85 @@ describe('wrapHandler', () => {
     const result = await wrapHandler(schema, fn)({ q: 'valid' }, { signal: controller.signal });
     expect(result.isError).toBe(true);
     expect(fn).not.toHaveBeenCalled();
+  });
+
+  it('discards a late success after cancellation during the handler', async () => {
+    const controller = new AbortController();
+    let finish!: (value: unknown) => void;
+    const pending = wrapHandler(
+      schema,
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    )({ q: 'valid' }, { signal: controller.signal });
+    controller.abort();
+    finish({ echo: 'private-late-output' });
+    const result = await pending;
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toBeUndefined();
+    expect(result.content[0]?.text).toContain('Cancelled');
+    expect(result.content[0]?.text).not.toContain('private-late-output');
+  });
+
+  it('classifies a late rejection after cancellation without exposing its reason', async () => {
+    const controller = new AbortController();
+    let fail!: (reason: Error) => void;
+    const pending = wrapHandler(
+      schema,
+      () =>
+        new Promise((_resolve, reject) => {
+          fail = reject;
+        }),
+    )({ q: 'valid' }, { signal: controller.signal });
+    controller.abort();
+    fail(new Error('private-handler-failure'));
+    const result = await pending;
+    expect(result.isError).toBe(true);
+    expect(result.content[0]?.text).toContain('Cancelled');
+    expect(result.content[0]?.text).not.toContain('private-handler-failure');
+  });
+
+  it('accepts the exact UTF-8 envelope limit and rejects one additional byte', () => {
+    const response = { content: [{ type: 'text' as const, text: '' }], isError: false };
+    const overhead = Buffer.byteLength(JSON.stringify(response), 'utf8');
+    const first = response.content[0];
+    if (!first) throw new Error('Expected text content');
+    first.text = 'x'.repeat(MAX_TOOL_OUTPUT_BYTES - overhead);
+    expect(limitToolResponse(response)).toBe(response);
+    first.text += 'x';
+    const rejected = limitToolResponse(response);
+    expect(rejected.isError).toBe(true);
+    expect(rejected.content[0]?.text).toContain('OutputTooLarge');
+    expect(Buffer.byteLength(JSON.stringify(rejected), 'utf8')).toBeLessThan(MAX_TOOL_OUTPUT_BYTES);
+  });
+
+  it('counts multibyte output and both representations before returning success', async () => {
+    const result = await wrapHandler(schema, () => Promise.resolve({ echo: '🧪'.repeat(40_000) }))({
+      q: 'valid',
+    });
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toBeUndefined();
+    expect(result.content[0]?.text).toContain('OutputTooLarge');
+    expect(result.content[0]?.text).not.toContain('🧪');
+  });
+
+  it('bounds validation issues and conceals dynamic record keys', async () => {
+    const privateKey = 'private-guest-name';
+    const inputSchema = z.object({ records: z.record(z.number()) });
+    const result = await wrapHandler(inputSchema, () => Promise.resolve({ ok: true }))({
+      records: Object.fromEntries(
+        Array.from({ length: 30 }, (_, index) => [`${privateKey}${String(index)}`, 'invalid']),
+      ),
+    });
+    const data = JSON.parse(result.content[0]?.text ?? '{}') as {
+      issues: unknown[];
+      issues_truncated: boolean;
+    };
+    expect(data.issues).toHaveLength(20);
+    expect(data.issues_truncated).toBe(true);
+    expect(result.content[0]?.text).not.toContain(privateKey);
+    expect(data.issues[0]).toEqual({ code: 'invalid_type', path: ['records', '[field]'] });
   });
 
   it('rejects non-object and non-finite outputs instead of silently changing JSON values', async () => {

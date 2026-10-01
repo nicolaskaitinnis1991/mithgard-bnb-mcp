@@ -1,9 +1,17 @@
 import { z } from 'zod';
+import {
+  TurnoverData,
+  ResultFields,
+  validateMode,
+  validateResult,
+} from '../../host-data/contracts.js';
 
 import { boundedId, isoDatetime } from '../../lib/validation.js';
 
 export const TurnoverInput = z
   .object({
+    mode: z.enum(['demo', 'provided']).optional(),
+    host_data: TurnoverData.optional(),
     listing_id: boundedId,
     checkout_at: isoDatetime,
     checkin_at: isoDatetime,
@@ -17,19 +25,30 @@ export const TurnoverInput = z
         path: ['checkin_at'],
         message: 'Checkin must be after checkout',
       });
-  });
+  })
+  .superRefine(validateMode);
 export type TurnoverInputT = z.infer<typeof TurnoverInput>;
 
-export const TurnoverOutput = z.object({
-  brief: z.string(),
-  approval_required: z.literal(true),
-  window_minutes: z.number().positive(),
-  feasible: z.boolean(),
-  warnings: z.array(z.string()),
-  checklist: z.array(z.string()),
-  crew_message_draft: z.string(),
-  estimated_duration_min: z.number().int().positive(),
-  _mock: z.literal(true),
-  _pitch: z.string(),
-});
+export const TurnoverOutput = z
+  .object({
+    brief: z.string(),
+    approval_required: z.literal(true),
+    window_minutes: z.number().positive(),
+    feasible: z.boolean(),
+    warnings: z.array(z.string()),
+    checklist: z.array(z.string()),
+    crew_message_draft: z.string(),
+    estimated_duration_min: z.number().int().positive(),
+    required_duration_min: z.number().int().positive().optional(),
+    proposed_cleaner_id: z.string().nullable().optional(),
+    assignment_status: z.literal('proposed_only').optional(),
+    scheduled_tasks: z
+      .array(z.object({ id: z.string(), title: z.string(), start: z.string(), end: z.string() }))
+      .optional(),
+    planned_start: z.string().nullable().optional(),
+    planned_end: z.string().nullable().optional(),
+    local_window: z.string().optional(),
+    ...ResultFields,
+  })
+  .superRefine(validateResult);
 export type TurnoverOutputT = z.infer<typeof TurnoverOutput>;

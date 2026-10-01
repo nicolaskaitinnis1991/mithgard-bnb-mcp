@@ -1,9 +1,17 @@
 import { z } from 'zod';
+import {
+  PricingData,
+  ResultFields,
+  validateMode,
+  validateResult,
+} from '../../host-data/contracts.js';
 
 import { boundedId, isoDate } from '../../lib/validation.js';
 
 export const SmartPricingInput = z
   .object({
+    mode: z.enum(['demo', 'provided']).optional(),
+    host_data: PricingData.optional(),
     listing_id: boundedId,
     from: isoDate,
     to: isoDate,
@@ -23,7 +31,8 @@ export const SmartPricingInput = z
         path: ['to'],
         message: 'Pricing horizon cannot exceed 30 days',
       });
-  });
+  })
+  .superRefine(validateMode);
 export type SmartPricingInputT = z.infer<typeof SmartPricingInput>;
 
 export const DailyPrice = z.object({
@@ -34,15 +43,17 @@ export const DailyPrice = z.object({
   reasons: z.array(z.string()),
 });
 
-export const SmartPricingOutput = z.object({
-  daily_prices: z.array(DailyPrice),
-  currency: z.literal('EUR'),
-  estimate_basis: z.literal('all_nights_booked_before_fees'),
-  summary: z.object({
-    avg_suggested: z.number().nonnegative(),
-    total_revenue_estimate: z.number().nonnegative(),
-  }),
-  _mock: z.literal(true),
-  _pitch: z.string(),
-});
+export const SmartPricingOutput = z
+  .object({
+    daily_prices: z.array(DailyPrice),
+    currency: z.string(),
+    skipped_dates: z.array(z.object({ date: z.string(), reason: z.string() })).optional(),
+    estimate_basis: z.literal('all_nights_booked_before_fees'),
+    summary: z.object({
+      avg_suggested: z.number().nonnegative().nullable(),
+      total_revenue_estimate: z.number().nonnegative(),
+    }),
+    ...ResultFields,
+  })
+  .superRefine(validateResult);
 export type SmartPricingOutputT = z.infer<typeof SmartPricingOutput>;

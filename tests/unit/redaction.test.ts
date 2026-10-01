@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { sanitize } from '../../src/lib/redaction.js';
 
-describe('debug metadata redaction', () => {
+describe('[PROTO] debug metadata redaction', () => {
   it('preserves counts, booleans, null and constrained enum metadata', () => {
     expect(
       sanitize({
@@ -87,5 +87,32 @@ describe('debug metadata redaction', () => {
     expect(JSON.stringify(result)).toContain('[TRUNCATED 10 ITEMS]');
     expect(sanitize(Infinity)).toBe('[REDACTED]');
     expect(sanitize(1n)).toBe('[REDACTED]');
+  });
+
+  it('preserves supplied-data evidence labels while concealing supplied facts and dynamic fields', () => {
+    const result = sanitize({
+      mode: 'provided',
+      _source: 'provided',
+      kind: 'OutputTooLarge',
+      data_evidence: {
+        source: 'provided',
+        complete: false,
+        missing_fields: ['private-policy-fact'],
+        as_of: '2026-06-01T10:00:00Z',
+        timezone: 'Europe/Berlin',
+      },
+      host_data: {
+        'private-guest-name': { password: 'private-access-code' },
+      },
+    });
+    expect(result).toMatchObject({
+      mode: 'provided',
+      _source: 'provided',
+      kind: 'OutputTooLarge',
+      data_evidence: { source: 'provided', complete: false, missing_fields: ['[REDACTED]'] },
+      host_data: { _redacted_fields: 1 },
+    });
+    expect(JSON.stringify(result)).not.toContain('private-');
+    expect(JSON.stringify(result)).not.toContain('2026-06-01');
   });
 });

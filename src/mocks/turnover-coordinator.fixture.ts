@@ -1,3 +1,4 @@
+import type { DemoOutput } from '../host-data/contracts.js';
 import type { TurnoverInputT, TurnoverOutputT } from '../tools/turnover-coordinator/schema.js';
 import { fnv1a } from './hash.js';
 
@@ -31,7 +32,7 @@ const formatDate = (iso: string): string => {
   return d.toISOString().slice(0, 10);
 };
 
-export const computeTurnover = (input: TurnoverInputT): TurnoverOutputT => {
+export const computeTurnover = (input: TurnoverInputT): DemoOutput<TurnoverOutputT> => {
   const seedSrc =
     input.cleaner_id !== undefined ? `${input.listing_id}:${input.cleaner_id}` : input.listing_id;
   const seed = fnv1a(seedSrc);

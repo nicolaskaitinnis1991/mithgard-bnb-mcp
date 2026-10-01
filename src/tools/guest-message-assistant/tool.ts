@@ -8,7 +8,7 @@ export const buildGuestMessageAssistantTool = (log: Logger, debug = false): Tool
   createTool({
     name: 'guest_message_assistant',
     description:
-      '[DEMO — requires Airbnb Partner API] Drafts 3 host-voiced reply suggestions for an incoming guest message. Always returns approval_required=true.',
+      '[LOCAL] Drafts three rule-based EN/DE guest replies using caller-supplied property facts with mode=provided, and identifies missing context. Synthetic demo is available with mode=demo or omitted mode. Requires host approval; sends no messages.',
     schema: GuestMessageInput,
     output: GuestMessageOutput,
     handler: withTelemetry(log, 'guest_message_assistant', guestMessageHandler, { debug }),

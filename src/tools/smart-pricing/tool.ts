@@ -8,7 +8,7 @@ export const buildSmartPricingTool = (log: Logger, debug = false): ToolDefinitio
   createTool({
     name: 'smart_pricing',
     description:
-      '[DEMO — requires Airbnb Partner API] Returns daily price suggestions with explainable reasons (weekday/seasonal/event factors). Capped at 30-day horizon; performs no price writes.',
+      '[LOCAL] Suggests bounded daily prices from caller-supplied prices and factors with mode=provided, excluding unavailable nights. Maximum 30 dates. Synthetic demo is available with mode=demo or omitted mode; performs no price writes or live market forecast.',
     schema: SmartPricingInput,
     output: SmartPricingOutput,
     handler: withTelemetry(log, 'smart_pricing', smartPricingHandler, { debug }),

@@ -290,7 +290,11 @@ describe('virtual host: reject misleading dates and impossible schedules', () =>
         expect(result.potential_recovery_eur).toBe(
           result.gaps
             .filter((gap) => gap.suggestion !== 'block')
-            .reduce((sum, gap) => sum + gap.cost_estimate_eur, 0),
+            .reduce((sum, gap) => {
+              if (gap.cost_estimate_eur === null)
+                throw new Error('Demo gap unexpectedly lacks a price');
+              return sum + gap.cost_estimate_eur;
+            }, 0),
         );
       }
     }

@@ -1,3 +1,4 @@
+import type { DemoOutput } from '../host-data/contracts.js';
 import type { SmartPricingInputT, SmartPricingOutputT } from '../tools/smart-pricing/schema.js';
 import { fnv1a } from './hash.js';
 
@@ -44,7 +45,7 @@ const addDays = (iso: string, n: number): string => {
   return d.toISOString().slice(0, 10);
 };
 
-export const computePricing = (input: SmartPricingInputT): SmartPricingOutputT => {
+export const computePricing = (input: SmartPricingInputT): DemoOutput<SmartPricingOutputT> => {
   const totalDays = Math.max(1, dayDiff(input.from, input.to) + 1);
   const horizon = Math.min(totalDays, MAX_HORIZON_DAYS);
 

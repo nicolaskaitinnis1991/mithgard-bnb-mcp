@@ -1,18 +1,11 @@
 # Integration guide
 
-Connect the built server using standard MCP initialization over stdio, then discover tools and use the published input/output schemas. [scripts/smoke.mjs](../scripts/smoke.mjs) is a working official-SDK client example. A plain tools/list line without initialization is not a complete protocol test.
+Initialize the stdio MCP connection, discover tools, then use the advertised schemas. Discovery enables official-SDK output validation. [Smoke client](../scripts/smoke.mjs) and [mixed load client](../tests/stress/virtual-users.test.ts) demonstrate the complete handshake.
 
-Public tools read listing pages. They are not a reservations API and do not authenticate a host. The seven demo workflows use synthetic fixtures, including illustrative IDs and metrics. Their current payloads are not a verified partner contract.
+Seven host engines accept explicit, tool-specific supplied data. Start with [the synthetic example](../examples/host-workflow.json): `host_workflow` in plan mode validates the entire request without running tools; execute mode returns verified outputs, provenance and pending approvals. Dependencies order steps but do not inject previous results. An external agent may prepare another explicit call using the reviewed outputs.
 
-To connect a real host provider, implement a separate injected adapter and verify:
+Host tools still support labelled demos. Supplying data without `mode:"provided"`, or choosing provided mode without data, fails rather than falling back. `complete` and source timestamps are caller assertions; this path does not authenticate an Airbnb account. Public readers consume pages and cannot establish reservations, messaging or listing ownership.
 
-1. Provider authorization, scoped access, listing/account ownership and revocation.
-2. Identifier mapping, currency, time zones, freshness, nullable fields and provider errors.
-3. Cancellation, deadlines, quotas, Retry-After and bounded pagination/body size.
-4. Recorded or sandbox contract tests for actual provider responses.
-5. Explicit approval, idempotency and audit records before adding any business write.
-6. End-to-end tests in the target system and real user acceptance.
+A real provider adapter must verify authorization/revocation, ownership, field mapping, currency/timezone/freshness, nullability, bounded pagination/body sizes, quotas, cancellation, provider error contracts and recorded/sandbox responses. Business writes require separate permissions, approvals, idempotency and audit records. See [data sources](data-sources.md).
 
-Keep demo markers until an authenticated path has been verified. The current project does not send messages, accept or decline bookings, update prices or assign cleaners. Remote HTTP MCP hosting, authentication and durable monitoring would be additional work.
-
-No access to Base360 internal interfaces was provided; employer-specific compatibility has not been checked. Reuse of individual modules is possible only after checking target contracts, dependencies and operational requirements.
+Base360 internals have not been provided or tested. Reuse requires checking target contracts and deployment conditions. Remote HTTP MCP hosting, authentication, durable state and external monitoring are additional components. The local agent does not restart the process; it limits observed failures and exposes their state.

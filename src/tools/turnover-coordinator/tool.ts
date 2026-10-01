@@ -8,7 +8,7 @@ export const buildTurnoverCoordinatorTool = (log: Logger, debug = false): ToolDe
   createTool({
     name: 'turnover_coordinator',
     description:
-      '[DEMO — requires Airbnb Partner API] Generates cleaning brief, checklist, crew message draft, and estimated duration for a turnover. Requires host approval and sends no notifications.',
+      '[LOCAL] Checks a proposed turnover plan against caller-supplied tasks, cleaner availability and buffer with mode=provided. Synthetic demo is available with mode=demo or omitted mode. Requires host approval; confirms no assignment and sends no notifications.',
     schema: TurnoverInput,
     output: TurnoverOutput,
     handler: withTelemetry(log, 'turnover_coordinator', turnoverHandler, { debug }),

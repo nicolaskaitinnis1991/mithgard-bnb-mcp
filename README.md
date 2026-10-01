@@ -1,12 +1,12 @@
 # Mithgard BnB MCP
 
-A TypeScript MCP server for public Airbnb listing data, seven clearly labelled host workflow demos, and a local operations agent.
+A TypeScript MCP server with two public Airbnb readers, seven local host-analysis tools, a bounded plan/execute/verify workflow and an operations agent inside the application.
 
-**Current scope:** two tools read public pages; seven tools use synthetic fixtures; `operations_status` reports this process's observations. There is no authenticated host or Partner API integration. This is an alpha portfolio project, with a reproducible verification suite.
+Host tools calculate from explicitly supplied data (`mode: "provided"`), or return clearly marked synthetic demos. Supplied data is **not** an authenticated Airbnb import. The server drafts and analyzes; it does not send messages, change bookings/prices or assign staff. This remains an alpha portfolio project.
 
 ## Install and verify
 
-Use Node.js 24 and npm. No API key is needed for the demo workflows.
+Use Node.js 24 and npm. No API or LLM key is needed for local host analysis.
 
 ```sh
 git clone https://github.com/nicolaskaitinnis1991/mithgard-bnb-mcp.git
@@ -15,14 +15,15 @@ npm ci
 npm run build
 npm run smoke
 npm run verify
-npm audit --audit-level=moderate
+# Complete local acceptance, including clean install, audit and Docker:
+npm run acceptance
 ```
 
-`smoke` uses the official MCP client, including initialization, tool discovery, schema validation, a demo call and an invalid-input call. It does not contact Airbnb. `verify` also runs lint, strict TypeScript checks, coverage, documentation checks and 2,000 synthetic MCP calls with bounded concurrency. These tests are simulated software tests; they are not a human usability study or an external Airbnb load test.
+`verify` checks lint, strict types, coverage, current indexes, MCP smoke and 2,000 mixed synthetic calls. `acceptance` also builds and tests a constrained container, and writes exact command exits, test names and source fingerprints to `reports/acceptance.json`. Docker must be running. Reports contain synthetic test evidence, never imported host records. See [the acceptance plan](docs/acceptance-plan.md).
 
 ## Connect an MCP client
 
-Configure a stdio MCP client with an absolute path to the built entry point:
+Configure a stdio client with an absolute path to Node 24 and the built entry point:
 
 ```json
 {
@@ -35,32 +36,37 @@ Configure a stdio MCP client with an absolute path to the built entry point:
 }
 ```
 
-Use a Node 24 executable if your client's environment defaults to an older runtime. Logs go to stderr; stdout carries MCP messages. The server supports `--help`, `--version` and `--debug`.
+Initialize and discover tools before calls so the official SDK can validate advertised output contracts. Logs go to stderr; stdout carries MCP messages. CLI: `--help`, `--version`, `--debug`.
 
 ## Tools
 
-| Tool | Data and behavior | Contract |
-| --- | --- | --- |
-| `airbnb_search` | Public-page search; distinguishes nightly, stay-total and unknown price basis | [Search](docs/tools/airbnb_search.md) |
-| `airbnb_listing_details` | Public listing details; unavailable numeric facts remain null | [Listing](docs/tools/airbnb_listing_details.md) |
-| `host_insights` | Demo operational metrics | [Insights](docs/tools/host_insights.md) |
-| `guest_message_assistant` | Demo drafts with missing context flagged | [Messages](docs/tools/guest_message_assistant.md) |
-| `booking_request_triage` | Demo recommendations requiring review | [Triage](docs/tools/booking_request_triage.md) |
-| `smart_pricing` | Demo nightly estimates, bounded to 30 dates | [Pricing](docs/tools/smart_pricing.md) |
-| `calendar_optimizer` | Demo calendar suggestions with explicit reference date | [Calendar](docs/tools/calendar_optimizer.md) |
-| `review_responder` | Demo response drafts requiring approval | [Reviews](docs/tools/review_responder.md) |
-| `turnover_coordinator` | Demo cleaning plan with timing feasibility checks | [Turnover](docs/tools/turnover_coordinator.md) |
-| `operations_status` | Local counters, circuit state and recovery guidance | [Operations](docs/tools/operations_status.md) |
+| Tool                      | Data and behavior                                                  | Contract                                          |
+| ------------------------- | ------------------------------------------------------------------ | ------------------------------------------------- |
+| `airbnb_search`           | Public search with nightly/total/unknown quote evidence            | [Search](docs/tools/airbnb_search.md)             |
+| `airbnb_listing_details`  | Public details; unknown numeric facts remain null                  | [Listing](docs/tools/airbnb_listing_details.md)   |
+| `host_insights`           | Supplied calendar occupancy, ADR, RevPAR and revenue               | [Insights](docs/tools/host_insights.md)           |
+| `guest_message_assistant` | DE/EN multi-topic drafts using supplied facts and policy           | [Messages](docs/tools/guest_message_assistant.md) |
+| `booking_request_triage`  | Capacity/rule checks and review recommendation                     | [Triage](docs/tools/booking_request_triage.md)    |
+| `smart_pricing`           | Bounded price rules, actual baselines and configured caps          | [Pricing](docs/tools/smart_pricing.md)            |
+| `calendar_optimizer`      | Actual available gaps, unknown nights and minimum-stay conflicts   | [Calendar](docs/tools/calendar_optimizer.md)      |
+| `review_responder`        | Complaint/safety classification and approval-required drafts       | [Reviews](docs/tools/review_responder.md)         |
+| `turnover_coordinator`    | Tasks, buffers, cleaner availability and assignment conflicts      | [Turnover](docs/tools/turnover_coordinator.md)    |
+| `host_workflow`           | Preflight every step, execute bounded dependencies, verify results | [Workflow](docs/tools/host_workflow.md)           |
+| `operations_status`       | Process counters, circuit state, freshness and resource budgets    | [Operations](docs/tools/operations_status.md)     |
 
-MCP publishes JSON input and output schemas generated from Zod. Successes contain validated `structuredContent` plus JSON text. Tool failures contain `isError: true` and a bounded text error envelope, without success-shaped structured content. All tools are read-only; no message, booking decision, price change or cleaner assignment is sent.
+Each tool publishes input/output schemas generated from Zod. Success contains matching JSON text and validated structured content. Generic failures have `isError: true` and a bounded error envelope. Workflow partial/deadline failures additionally return valid structured progress under their explicit output contract.
 
-## Reliability and operations
+## Provided data and agentic use
 
-Public requests have a total deadline, bounded queue and response body, cancellation, finite retries, per-origin Retry-After handling, and shutdown cleanup. Dates, identifiers, prices and maximum output size are validated. Cache keys include dates and currency.
+Start with [the executable synthetic example](examples/host-workflow.json): call `host_workflow` in `plan` mode to validate arguments without running tools; change to `execute` to run and verify. An MCP client or agent supplies the explicit plan. The orchestrator uses deterministic rules; it does not call an LLM or pass earlier output into later arguments automatically.
 
-The built-in agent is a local rule-based supervisor. It observes calls, limits concurrency, clears local caches after repeated upstream failures, pauses the affected public workflow, and allows a single recovery probe after cooldown. It never stores guest text, restarts itself, edits code or changes a host account. See [operations](docs/operations.md) and [limitations](docs/limitations.md).
+Host results retain `_source`, `_mock` and `data_evidence` with timestamp, timezone, currency, completeness and missing fields. Any `host_data` requires `mode: "provided"`; missing/invalid data cannot silently fall back to fixtures. Business drafts continue to require human approval after technical verification. See [data sources](docs/data-sources.md).
 
-## Docker
+## Reliability and Docker
+
+HTTP deadlines, queue/body budgets, cancellation, finite429 retries and per-origin cooldown bound public requests. Caches have entry, TTL and serialized-byte limits. Responses have a 256KiB UTF8 envelope limit. Workflow limits are eight steps, four concurrent workflows and at most 60 seconds. EOF, SIGINT and SIGTERM cancel work and release local state.
+
+The local operations agent isolates repeated upstream failures, clears caches and permits one later recovery probe. Health reflects recent public observations only; provided/demo success cannot verify Airbnb. It stores counters, not guest text. See [operations](docs/operations.md).
 
 ```sh
 docker build -t mithgard-bnb-mcp:local .
@@ -68,12 +74,10 @@ node scripts/smoke.mjs --docker mithgard-bnb-mcp:local
 MITHGARD_STRESS_DOCKER_IMAGE=mithgard-bnb-mcp:local npm run test:stress
 ```
 
-The runtime image is distroless Node 24 running as a non-root user. The smoke client runs it with a read-only filesystem, no added capabilities, no-new-privileges and a 256 MB memory limit. The server is stdio-based; it does not expose an HTTP port.
+The runtime is distroless Node 24, non-root. Tests use a read-only filesystem, disabled networking, dropped capabilities, no-new-privileges and 256 MB memory. No HTTP port is exposed.
 
-## Integration and evidence
+## Evidence and integration
 
-Start with [the repository index](docs/INDEX.md), [architecture](docs/architecture.md), [integration guide](docs/integration.md), and [verification report](docs/readiness-2026-10-01.md). The index covers source files and Markdown documents and checks local links. An index hash is a change detector, not proof of code correctness.
+[File/Markdown hashes](docs/INDEX.md), [functions/methods](docs/FUNCTIONS.md), [architecture](docs/architecture.md), [integration](docs/integration.md), [acceptance](docs/acceptance-plan.md) and [limitations](docs/limitations.md) describe the maintained scope. An index and passing tests establish traceability; they do not prove every line correct or establish human acceptance.
 
-An authenticated provider adapter, explicit permissions, field mapping and provider contract tests are required before connecting real host operations. Compatibility with Base360 or any employer's internal system has not been tested. Public Airbnb HTML can change or be blocked; fixture tests do not guarantee live availability.
-
-Contact: [mithgard.ai](https://mithgard.ai). License: [MIT](LICENSE).
+Authenticated provider access, provider contract tests, target Base360 integration and real host feedback remain external gates. Public Airbnb HTML may change or be unavailable. Contact: [mithgard.ai](https://mithgard.ai). License: [MIT](LICENSE).

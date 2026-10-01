@@ -1,64 +1,82 @@
 # host_insights
 
-Illustrative performance dashboard. **Demo only:** output always carries `_mock: true`. This tool has no Airbnb Partner API connection and performs no external action. Treat results as examples, never as observed host data.
+Calculates occupancy, recorded revenue, ADR and RevPAR from explicitly supplied nightly records. No account import, market feed or business action occurs.
 
-## Contract
+## Mode and evidence
 
-- `listing_id`: nonempty identifier, at most 200 characters.
-- `period`: `last_30d` (default), `last_90d`, or `last_year`.
-- `reference_date`: optional real `YYYY-MM-DD`; defaults to the current UTC date.
+`mode: "provided"` requires `host_data`. Passing data without that mode, or omitting data in that mode, fails validation; there is no fixture fallback. With `mode: "demo"` (or no mode and no data), the existing synthetic fixture runs instead.
 
-The listing/period hash selects one of three sample performance profiles. Revenue and competitor numbers are synthetic, not observations. Recommendation dates are relative to `reference_date`. Periods do not calculate actual historical revenue.
+Every result has `_source`, `_mock`, and `data_evidence`. Provided calculations use `_source: "provided", _mock: false`; this means calculated from caller assertions, not authenticated/imported account data. Evidence includes the caller's `as_of` timestamp, IANA `timezone`, `currency`, `complete`, and detected `missing_fields`. `complete: true` is only retained when the source asserts completeness and required calculation facts are present. Demo evidence has `as_of: null`, `complete: false`, and `missing_fields: ["synthetic_data"]`.
 
-All inputs reject unknown fields. Identifiers and free text are bounded. Invalid input produces an MCP tool error before the handler runs. Outputs are validated against the registered Zod schema.
+Metadata is required in every supplied dataset. Supported currencies are EUR, GBP, USD, CAD, AUD and CHF; money supports up to two decimals, nonnegative values and a maximum of 1,000,000 per supplied amount. No currency conversion occurs. Input objects reject unknown fields; strings, arrays, dates and amounts are bounded. Outputs are validated at the MCP boundary.
 
-## Reproducible offline example
+## Supplied-data contract and calculation
 
-This input/output pair was generated from the fixture handler, not from a real host account. Dates are explicit for reproducibility.
+- `listing_id`: nonempty ID, at most 200 characters; it never influences provided metrics.
+- `host_data.from`, `to`: real dates covering 1–366 nights; `to` is exclusive. This explicit reporting range is authoritative in provided mode. Legacy `period` and `reference_date` select/demo-label fixtures only.
+- `host_data.nights`: at most 366 distinct `{date, state, price?, revenue?}` records within the reporting range. States: `available`, `booked`, `owner_block`, `cancelled`, `unknown`.
+- Optional `benchmark`: `{revenue, currency, from, to, sample_size}`. Revenue is the supplied comparison revenue per property for the same reporting period; period/currency must match exactly. No comparable listings are fetched.
 
-Input:
+Occupancy is booked nights divided by booked + available nights. Owner blocks and cancelled records are excluded from offered nights. Revenue is summed only from booked-night `revenue`, never from advertised prices or cancelled records. ADR = recorded revenue / booked nights; RevPAR = recorded revenue / offered nights. Zero denominators produce `null`; an incomplete source or missing/unknown dates prevents aggregate metrics. Missing booked revenue leaves occupancy calculable but financial metrics `null`.
 
-```json
-{
-  "listing_id": "12345",
-  "period": "last_30d",
-  "reference_date": "2026-10-01"
-}
-```
+`revenue`, `adr`, `revpar` and `benchmark_revenue` use the supplied currency. Legacy `revenue_eur` and `competitor_avg_revenue_eur` aliases are `null` for non-EUR datasets. Missing benchmark means `delta_pct: null` and no market claim. No causal pricing recommendation is fabricated; `pricing_recommendations` is empty in provided mode.
 
-Output:
+## Reproducible synthetic example
+
+These caller facts are synthetic test data, not a real property account. Input:
 
 ```json
 {
-  "occupancy_rate": 0.71,
-  "revenue_eur": 4280,
-  "competitor_avg_revenue_eur": 4350,
-  "delta_pct": -1.6,
-  "pricing_recommendations": [
-    {
-      "date_range": "2026-10-08..2026-10-15",
-      "current": 109,
-      "suggested": 119,
-      "reason": "Sold-out competitors within 1km — small uplift safe"
-    }
-  ],
-  "insights": [
-    "Listing performs at market. Small upside via event-based pricing.",
-    "Average daily rate within 2% of competitors.",
-    "Recommend: monitor calendar gaps via calendar_optimizer."
-  ],
-  "reference_date": "2026-10-01",
-  "_mock": true,
-  "_pitch": "Surfaces revenue gaps and concrete pricing actions per listing"
+  "mode": "provided",
+  "listing_id": "synthetic-property",
+  "host_data": {
+    "as_of": "2026-06-03T09:00:00Z",
+    "timezone": "Europe/Berlin",
+    "currency": "EUR",
+    "complete": true,
+    "from": "2026-06-01",
+    "to": "2026-06-03",
+    "nights": [
+      {
+        "date": "2026-06-01",
+        "state": "booked",
+        "revenue": 100
+      },
+      {
+        "date": "2026-06-02",
+        "state": "owner_block"
+      }
+    ]
+  }
 }
 ```
 
-## Source and validation
+Selected output fields (the full result also includes evidence and other validated fields):
+
+```json
+{
+  "_source": "provided",
+  "_mock": false,
+  "occupancy_rate": 1,
+  "revenue": 100,
+  "adr": 100,
+  "revpar": 100,
+  "available_nights": 1,
+  "occupied_nights": 1,
+  "delta_pct": null,
+  "pricing_recommendations": []
+}
+```
+
+## External prerequisites and acceptance
+
+Automatic account import and independently sourced comparable revenue need an authorized provider and actual datasets.
 
 - [Schema](../../src/tools/host-insights/schema.ts)
 - [Handler](../../src/tools/host-insights/handler.ts)
-- [Fixture](../../src/mocks/host-insights.fixture.ts)
-- [Synthetic host regression scenarios](../../tests/integration/virtual-host-scenarios.test.ts)
-- [Limitations](../limitations.md)
+- [Strict host-data contracts](../../src/host-data/contracts.ts)
+- [Local calculation engines](../../src/host-data/engines.ts)
+- [Provided-data acceptance scenarios](../../tests/integration/provided-host-data.test.ts)
+- [Saved acceptance plan](../acceptance-plan.md)
 
-Synthetic scenarios are automated acceptance tests. They do not constitute human user testing.
+Automated scenarios and synthetic load are technical evidence, not human host acceptance.

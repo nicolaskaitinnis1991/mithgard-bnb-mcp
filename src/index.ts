@@ -10,6 +10,8 @@ import { parseSearchResults, parseListingDetails } from './parsers/airbnb-public
 import { parseArgs, USAGE } from './lib/cli.js';
 import { OperationsAgent } from './operations/agent.js';
 import { buildOperationsTool } from './operations/tool.js';
+import { WorkflowEngine } from './workflows/engine.js';
+import { buildWorkflowTool } from './workflows/tool.js';
 
 // package.json read happens here (and again in server.ts) — duplication is
 // deliberate: env.ts loads before package.json can be parsed, so we resolve
@@ -59,10 +61,12 @@ const main = async () => {
   const searchCache = createCache<object>({
     max: env.CACHE_MAX_SEARCH,
     ttlMs: env.CACHE_TTL_SEARCH_MS,
+    maxBytes: env.CACHE_MAX_BYTES_SEARCH,
   });
   const listingCache = createCache<object>({
     max: env.CACHE_MAX_LISTING,
     ttlMs: env.CACHE_TTL_LISTING_MS,
+    maxBytes: env.CACHE_MAX_BYTES_LISTING,
   });
 
   const deps: AppDeps = {
@@ -103,47 +107,70 @@ const main = async () => {
   };
 
   const operations = new OperationsAgent(log, {
+    httpStatus: http.status,
+    cacheStatus: () => ({ search: searchCache.status(), listing: listingCache.status() }),
     clearCaches: () => {
       searchCache.clear();
       listingCache.clear();
     },
   });
-  const tools = [
+  const supervisedTools = [
     ...allTools(deps).map((tool) => operations.supervise(tool)),
     buildOperationsTool(operations),
   ];
+  const workflow = new WorkflowEngine(supervisedTools);
+  const tools = [...supervisedTools, buildWorkflowTool(workflow)];
   const server = buildServer(tools, log);
   const transport = new StdioServerTransport();
-  await server.connect(transport);
-  log.info({ tool_count: tools.length, debug: intent.debug }, 'server.started');
-  let shuttingDown = false;
+  let shutdownPromise: Promise<void> | undefined;
+  let cleanupPromise: Promise<void> | undefined;
   const cleanup = async () => {
-    operations.close();
-    await http.close();
-    searchCache.clear();
-    listingCache.clear();
-  };
-  server.onclose = () => {
-    void cleanup();
+    cleanupPromise ??= (async () => {
+      workflow.close();
+      operations.close();
+      await http.close();
+      searchCache.clear();
+      listingCache.clear();
+    })();
+    await cleanupPromise;
   };
   const shutdown = async () => {
-    if (shuttingDown) return;
-    shuttingDown = true;
-    await cleanup();
-    const deadline = setTimeout(() => process.exit(1), 5_000);
-    deadline.unref();
-    try {
-      await server.close();
-    } finally {
-      clearTimeout(deadline);
-    }
+    shutdownPromise ??= (async () => {
+      // Bound the complete cleanup sequence, including active HTTP cancellation.
+      const deadline = setTimeout(() => process.exit(1), 5_000);
+      deadline.unref();
+      try {
+        await cleanup();
+        await server.close();
+        log.info(
+          {
+            http: http.status(),
+            search_cache: searchCache.status(),
+            listing_cache: listingCache.status(),
+          },
+          'server.stopped',
+        );
+      } finally {
+        clearTimeout(deadline);
+      }
+    })();
+    await shutdownPromise;
   };
-  process.once('SIGINT', () => {
-    void shutdown();
-  });
-  process.once('SIGTERM', () => {
-    void shutdown();
-  });
+  const beginShutdown = () => {
+    void shutdown().catch(() => {
+      log.error('server.shutdown_failed');
+      process.exitCode = 1;
+    });
+  };
+  server.onclose = beginShutdown;
+  // StdioServerTransport does not close itself on EOF. Listen to the actual
+  // input lifecycle so clients do not need a fallback SIGTERM to cancel work.
+  process.stdin.once('end', beginShutdown);
+  process.stdin.once('close', beginShutdown);
+  process.once('SIGINT', beginShutdown);
+  process.once('SIGTERM', beginShutdown);
+  await server.connect(transport);
+  log.info({ tool_count: tools.length, debug: intent.debug }, 'server.started');
 };
 
 main().catch((e: unknown) => {

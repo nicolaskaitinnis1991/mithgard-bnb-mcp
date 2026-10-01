@@ -6,7 +6,7 @@ import {
   McpError,
 } from '@modelcontextprotocol/sdk/types.js';
 import { readFileSync } from 'node:fs';
-import type { ToolDefinition } from './tools/registry.js';
+import { limitToolResponse, type ToolDefinition } from './tools/registry.js';
 import type { Logger } from 'pino';
 
 // Read version + name from package.json at runtime. JSON import attributes
@@ -41,7 +41,9 @@ export const buildServer = (tools: ToolDefinition[], log: Logger) => {
     const tool = registry.get(req.params.name);
     if (!tool) throw new McpError(ErrorCode.InvalidParams, 'Unknown tool name');
     log.info({ tool: tool.name }, 'tool.call');
-    return tool.handler(req.params.arguments ?? {}, { signal: extra.signal });
+    return limitToolResponse(
+      await tool.handler(req.params.arguments ?? {}, { signal: extra.signal }),
+    );
   });
 
   return server;

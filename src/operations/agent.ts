@@ -1,5 +1,7 @@
 import type { Logger } from 'pino';
 import type { ToolDefinition, ToolResponse } from '../tools/registry.js';
+import type { HttpStatus } from '../lib/http.js';
+import type { CacheStatus } from '../lib/cache.js';
 
 export interface OperationsOptions {
   failureThreshold?: number;
@@ -7,11 +9,14 @@ export interface OperationsOptions {
   maxActive?: number;
   now?: () => number;
   clearCaches?: () => void;
+  httpStatus?: () => HttpStatus;
+  cacheStatus?: () => Record<string, CacheStatus>;
+  healthFreshnessMs?: number;
 }
 
 interface ToolState {
   name: string;
-  mode: 'public' | 'demo';
+  mode: 'public' | 'demo' | 'local';
   calls: number;
   successes: number;
   errors: number;
@@ -24,6 +29,16 @@ interface ToolState {
   cooldown_until: number | null;
   recovery_probe: boolean;
   circuit_generation: number;
+  opening_generation: number | null;
+  last_public_success_at: number | null;
+  observed_sources: {
+    public: number;
+    provided: number;
+    demo: number;
+    local: number;
+    unknown: number;
+  };
+  rejections: { busy: number; circuit_open: number; closed: number; cancelled: number };
 }
 
 const errorResult = (kind: string, message: string): ToolResponse => ({
@@ -33,7 +48,7 @@ const errorResult = (kind: string, message: string): ToolResponse => ({
 
 const failureInfo = (
   result: ToolResponse,
-): { kind: string; reason?: string; retryMs?: number } | null => {
+): { kind: string; reason?: string; retryMs?: number; scope?: 'local' | 'upstream' } | null => {
   if (!result.isError) return null;
   const text = result.content[0]?.text;
   if (text !== undefined && text.length < 65_536) {
@@ -52,6 +67,9 @@ const failureInfo = (
               : undefined;
           return {
             kind,
+            ...('scope' in detail && (detail.scope === 'local' || detail.scope === 'upstream')
+              ? { scope: detail.scope }
+              : {}),
             ...(reason !== undefined ? { reason } : {}),
             ...(retryMs !== undefined ? { retryMs } : {}),
           };
@@ -72,6 +90,7 @@ export class OperationsAgent {
   private readonly failureThreshold: number;
   private readonly cooldownMs: number;
   private readonly maxActive: number;
+  private readonly healthFreshnessMs: number;
   private active = 0;
   private closed = false;
   private recoveryCount = 0;
@@ -85,13 +104,20 @@ export class OperationsAgent {
     this.failureThreshold = options.failureThreshold ?? 3;
     this.cooldownMs = options.cooldownMs ?? 30_000;
     this.maxActive = options.maxActive ?? 64;
+    this.healthFreshnessMs = options.healthFreshnessMs ?? 300_000;
     if (
-      !Number.isInteger(this.failureThreshold) ||
+      !Number.isSafeInteger(this.failureThreshold) ||
       this.failureThreshold < 1 ||
-      !Number.isFinite(this.cooldownMs) ||
+      this.failureThreshold > 100 ||
+      !Number.isSafeInteger(this.cooldownMs) ||
       this.cooldownMs < 1 ||
-      !Number.isInteger(this.maxActive) ||
-      this.maxActive < 1
+      this.cooldownMs > 3_600_000 ||
+      !Number.isSafeInteger(this.maxActive) ||
+      this.maxActive < 1 ||
+      this.maxActive > 1000 ||
+      !Number.isSafeInteger(this.healthFreshnessMs) ||
+      this.healthFreshnessMs < 1 ||
+      this.healthFreshnessMs > 3_600_000
     )
       throw new Error('Invalid operations agent limits');
   }
@@ -100,7 +126,11 @@ export class OperationsAgent {
     if (this.states.has(tool.name)) throw new Error('Duplicate supervised tool');
     const state: ToolState = {
       name: tool.name,
-      mode: tool.description.startsWith('[DEMO') ? 'demo' : 'public',
+      mode: tool.description.startsWith('[DEMO')
+        ? 'demo'
+        : tool.description.startsWith('[LOCAL')
+          ? 'local'
+          : 'public',
       calls: 0,
       successes: 0,
       errors: 0,
@@ -113,17 +143,31 @@ export class OperationsAgent {
       cooldown_until: null,
       recovery_probe: false,
       circuit_generation: 0,
+      opening_generation: null,
+      last_public_success_at: null,
+      observed_sources: { public: 0, provided: 0, demo: 0, local: 0, unknown: 0 },
+      rejections: { busy: 0, circuit_open: 0, closed: 0, cancelled: 0 },
     };
     this.states.set(tool.name, state);
     return {
       ...tool,
       handler: async (input, context) => {
-        if (this.closed) return errorResult('Closed', 'Server is shutting down');
-        if (this.active >= this.maxActive)
+        if (this.closed) {
+          state.rejections.closed++;
+          return errorResult('Closed', 'Server is shutting down');
+        }
+        if (context?.signal.aborted) {
+          state.rejections.cancelled++;
+          return errorResult('Cancelled', 'Tool request was cancelled');
+        }
+        if (this.active >= this.maxActive) {
+          state.rejections.busy++;
           return errorResult('Busy', 'Concurrent call limit reached');
+        }
         let ownsProbe = false;
         if (state.cooldown_until !== null) {
           if (this.now() < state.cooldown_until || state.recovery_probe) {
+            state.rejections.circuit_open++;
             return errorResult(
               'CircuitOpen',
               'Upstream workflow is cooling down; inspect operations_status',
@@ -142,10 +186,9 @@ export class OperationsAgent {
         try {
           response = await tool.handler(input, context);
         } catch {
-          response = errorResult(
-            'InternalError',
-            'Unexpected tool failure; inspect server diagnostics',
-          );
+          response = context?.signal.aborted
+            ? errorResult('Cancelled', 'Tool request was cancelled')
+            : errorResult('InternalError', 'Unexpected tool failure; inspect server diagnostics');
         } finally {
           state.active -= 1;
           this.active -= 1;
@@ -157,6 +200,21 @@ export class OperationsAgent {
         state.max_duration_ms = Math.max(state.max_duration_ms, state.last_duration_ms);
         if (kind === null) {
           state.successes += 1;
+          const source = response.structuredContent?._source;
+          const observed =
+            source === 'public' || source === 'provided' || source === 'demo' || source === 'local'
+              ? source
+              : state.mode === 'demo'
+                ? 'demo'
+                : 'unknown';
+          state.observed_sources[observed]++;
+          if (
+            generation === state.circuit_generation &&
+            state.mode === 'public' &&
+            (observed === 'public' || source === undefined)
+          ) {
+            state.last_public_success_at = this.now();
+          }
           // An older success must not close a circuit opened by newer failures.
           if (
             generation === state.circuit_generation &&
@@ -165,11 +223,19 @@ export class OperationsAgent {
             state.consecutive_failures = 0;
             state.cooldown_until = null;
             state.last_error_kind = null;
+            state.opening_generation = null;
+            // Recovery advances the epoch too: old failures can no longer
+            // poison a circuit that a newer half-open probe closed.
+            if (ownsProbe) state.circuit_generation++;
           }
           state.last_success_at = this.now();
         } else {
           state.errors += 1;
-          state.last_error_kind = kind;
+          if (
+            kind === 'Cancelled' ||
+            (kind === 'TransportFailed' && failure?.reason === 'Cancelled')
+          )
+            state.rejections.cancelled++;
           const upstreamFailure =
             [
               'UpstreamHTTP',
@@ -177,19 +243,35 @@ export class OperationsAgent {
               'InternalError',
               'UnexpectedError',
               'OutputValidationFailed',
-              'RateLimited',
             ].includes(kind) ||
+            (kind === 'RateLimited' && failure?.scope !== 'local') ||
             (kind === 'TransportFailed' &&
               ['Network', 'Timeout', 'ResponseTooLarge'].includes(failure?.reason ?? ''));
           if (upstreamFailure) {
-            state.consecutive_failures += 1;
+            const current = generation === state.circuit_generation;
+            const sameOutage =
+              state.cooldown_until !== null && generation === state.opening_generation;
+            if (current || sameOutage) {
+              state.last_error_kind = kind;
+              state.consecutive_failures += 1;
+            }
+            // A late 429 from this outage can lengthen the existing cooldown,
+            // but cannot reopen/alter a later successfully recovered epoch.
+            if (sameOutage && failure?.retryMs !== undefined) {
+              state.cooldown_until = Math.max(
+                state.cooldown_until ?? 0,
+                this.now() + failure.retryMs,
+              );
+            }
             if (
+              current &&
               state.mode === 'public' &&
               state.consecutive_failures >= this.failureThreshold &&
               (state.cooldown_until === null || ownsProbe)
             ) {
               const cooldownMs = Math.max(this.cooldownMs, failure?.retryMs ?? 0);
-              state.cooldown_until = this.now() + cooldownMs;
+              state.cooldown_until = Math.max(state.cooldown_until ?? 0, this.now() + cooldownMs);
+              state.opening_generation = generation;
               state.circuit_generation += 1;
               this.recoveryCount += 1;
               try {
@@ -219,14 +301,28 @@ export class OperationsAgent {
 
   snapshot() {
     const tools = [...this.states.values()].map(
-      ({ recovery_probe: _probe, circuit_generation: _generation, ...state }) => ({ ...state }),
+      ({
+        recovery_probe: _probe,
+        circuit_generation: _generation,
+        opening_generation: _opening,
+        ...state
+      }) => ({
+        ...state,
+        observed_sources: { ...state.observed_sources },
+        rejections: { ...state.rejections },
+      }),
     );
     const publicTools = tools.filter((tool) => tool.mode === 'public');
-    const degraded = tools.some(
+    const degraded = publicTools.some(
       (tool) => tool.consecutive_failures > 0 || tool.cooldown_until !== null,
     );
     const verified =
-      publicTools.length > 0 && publicTools.every((tool) => tool.last_success_at !== null);
+      publicTools.length > 0 &&
+      publicTools.every(
+        (tool) =>
+          tool.last_public_success_at !== null &&
+          this.now() - tool.last_public_success_at <= this.healthFreshnessMs,
+      );
     return {
       agent: 'mithgard-operations',
       strategy: 'local-rules' as const,
@@ -238,7 +334,7 @@ export class OperationsAgent {
             ? ('healthy' as const)
             : ('unverified' as const),
       health_scope:
-        'Observed calls in this process; no active Airbnb probes or human usability claims',
+        'Recent observed public calls in this process only; provided/local/demo successes do not verify Airbnb. No active probes, global uptime guarantee, process restart or external alert delivery.',
       uptime_ms: Math.max(0, this.now() - this.startedAt),
       active_calls: this.active,
       recovery_count: this.recoveryCount,
@@ -246,6 +342,11 @@ export class OperationsAgent {
         max_active: this.maxActive,
         failure_threshold: this.failureThreshold,
         cooldown_ms: this.cooldownMs,
+        health_freshness_ms: this.healthFreshnessMs,
+      },
+      resources: {
+        http: this.options.httpStatus?.() ?? null,
+        caches: this.options.cacheStatus?.() ?? {},
       },
       tools,
       recommendations: degraded
@@ -255,7 +356,9 @@ export class OperationsAgent {
           ]
         : verified
           ? []
-          : ['Exercise both public tools before claiming live health'],
+          : [
+              'Observe successful recent calls for every public tool; local/provided/demo calls cannot establish live health',
+            ],
     };
   }
 

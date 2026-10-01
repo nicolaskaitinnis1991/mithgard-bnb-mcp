@@ -2,6 +2,11 @@ import { createServer, type Server } from 'node:http';
 import type { Socket } from 'node:net';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { createHttpClient } from '../../src/lib/http.js';
+import { OperationsAgent } from '../../src/operations/agent.js';
+import { buildOperationsTool } from '../../src/operations/tool.js';
+import { createTool, toolError } from '../../src/tools/registry.js';
+import { z } from 'zod';
+import pino from 'pino';
 
 let server: Server;
 let otherServer: Server;
@@ -158,14 +163,75 @@ describe('HTTP deadline, backpressure and shutdown', () => {
     await http.close();
   });
 
-  it('includes queue waiting in the deadline', async () => {
+  it('[OPS] shutdown cancels retry backoff and releases call accounting without another attempt', async () => {
+    retryCalls = 0;
+    const http = client();
+    const started = new Promise<void>((resolve) =>
+      server.once('request', () => {
+        resolve();
+      }),
+    );
+    const first = http.get(`${origin}/retry-wait`);
+    await started;
+    // This independent origin can complete only after the retry released the queue.
+    expect(await http.get(`${otherOrigin}/ok`)).toMatchObject({ ok: true });
+    await http.close();
+    expect(await first).toMatchObject({ ok: false, error: { reason: 'Closed' } });
+    expect(retryCalls).toBe(1);
+    expect(http.status()).toMatchObject({ closed: true, in_flight: 0, active: 0, queued: 0 });
+  });
+
+  it('[OPS] distinguishes local rate-spacing deadline from an upstream timeout', async () => {
     const http = client({ ratePerSec: 1, timeoutMs: 80 });
     expect(await http.get(`${origin}/ok`)).toMatchObject({ ok: true });
     expect(await http.get(`${origin}/ok`)).toMatchObject({
       ok: false,
-      error: { reason: 'Timeout' },
+      error: { reason: 'QueueTimeout' },
     });
     expect(http.status().attempts).toBe(1);
+    expect(http.status()).toMatchObject({ queue_timeouts: 1, upstream_timeouts: 0 });
     await http.close();
+  });
+
+  it('[OPS] exposes actual HTTP resources and survives a concurrent local queue-timeout burst without an upstream circuit', async () => {
+    const http = client({ ratePerSec: 1, timeoutMs: 150 });
+    const agent = new OperationsAgent(pino({ enabled: false }), { httpStatus: http.status });
+    const tool = agent.supervise(
+      createTool({
+        name: 'healthy_public',
+        description: 'Public test',
+        schema: z.object({}).strict(),
+        output: z.object({ ok: z.boolean(), _source: z.literal('public') }),
+        handler: async () => {
+          const result = await http.get(`${origin}/ok`);
+          return result.ok ? { ok: true, _source: 'public' } : toolError(result.error);
+        },
+      }),
+    );
+    try {
+      const results = await Promise.all(Array.from({ length: 8 }, () => tool.handler({})));
+      expect(results.filter((result) => !result.isError)).toHaveLength(1);
+      expect(results.filter((result) => result.isError)).toHaveLength(7);
+      for (const result of results.filter((response) => response.isError)) {
+        expect(JSON.parse(result.content[0]?.text ?? '{}')).toMatchObject({
+          kind: 'TransportFailed',
+          reason: 'QueueTimeout',
+        });
+      }
+      const diagnostics = agent.snapshot();
+      expect(diagnostics.recovery_count).toBe(0);
+      expect(diagnostics.tools[0]).toMatchObject({ consecutive_failures: 0, cooldown_until: null });
+      expect(diagnostics.resources.http).toMatchObject({
+        requests: 8,
+        attempts: 1,
+        completed: 1,
+        failures: 7,
+        queue_timeouts: 7,
+        upstream_timeouts: 0,
+      });
+      expect((await buildOperationsTool(agent).handler({})).isError).toBe(false);
+    } finally {
+      await http.close();
+    }
   });
 });

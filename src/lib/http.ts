@@ -34,6 +34,19 @@ export interface HttpStatus {
   failures: number;
   rate_limited: number;
   response_bytes: number;
+  queue_timeouts: number;
+  upstream_timeouts: number;
+  rejected_full: number;
+  cancelled: number;
+  limits: {
+    timeout_ms: number;
+    max_queue_size: number;
+    max_response_bytes: number;
+    max_retries: number;
+    max_retry_after_ms: number;
+    rate_per_sec: number;
+    rate_per_hour: number;
+  };
 }
 
 const abortError = (signal: AbortSignal): Error => {
@@ -131,6 +144,10 @@ export const createHttpClient = (opts: HttpOptions) => {
     failures: 0,
     rate_limited: 0,
     response_bytes: 0,
+    queue_timeouts: 0,
+    upstream_timeouts: 0,
+    rejected_full: 0,
+    cancelled: 0,
   };
   let closed = false;
 
@@ -140,12 +157,22 @@ export const createHttpClient = (opts: HttpOptions) => {
     queued: queue.size,
     in_flight: calls.size,
     ...counters,
+    limits: {
+      timeout_ms: timeoutMs,
+      max_queue_size: maxQueueSize,
+      max_response_bytes: maxResponseBytes,
+      max_retries: maxRetries,
+      max_retry_after_ms: maxRetryAfterMs,
+      rate_per_sec: ratePerSec,
+      rate_per_hour: ratePerHour,
+    },
   });
 
   const attemptGet = async (
     url: string,
     signal: AbortSignal,
     attempt: number,
+    onUpstreamStart: () => void,
   ): Promise<{ result: Result<string, McpError>; retryAfter?: number }> => {
     const now = Date.now();
     const origin = new URL(url).origin;
@@ -166,7 +193,9 @@ export const createHttpClient = (opts: HttpOptions) => {
     while ((hourStarts[0] ?? Infinity) <= now - 3_600_000) hourStarts.shift();
     if (hourStarts.length >= ratePerHour) {
       return {
-        result: err(rateLimited((hourStarts[0] ?? now) + 3_600_000 - now, new URL(url).host)),
+        result: err(
+          rateLimited((hourStarts[0] ?? now) + 3_600_000 - now, new URL(url).host, 'local'),
+        ),
       };
     }
     // Space starts rather than fixed-window caps, which can burst at boundaries.
@@ -176,6 +205,7 @@ export const createHttpClient = (opts: HttpOptions) => {
     nextStartAt = startedAt + Math.ceil(1000 / ratePerSec);
     hourStarts.push(startedAt);
     counters.attempts++;
+    onUpstreamStart();
     const res = await request(url, {
       method: 'GET',
       headers: { 'user-agent': opts.userAgent },
@@ -225,12 +255,14 @@ export const createHttpClient = (opts: HttpOptions) => {
     }
     if (queue.size >= maxQueueSize || calls.size >= maxQueueSize + 1) {
       counters.failures++;
+      counters.rejected_full++;
       return err(transportFailed(url, 'QueueFull', 'HTTP queue capacity was reached'));
     }
     const controller = new AbortController();
+    let phase: 'queue' | 'upstream' = 'queue';
     const expiresAt = Date.now() + timeoutMs;
     const timer = setTimeout(() => {
-      controller.abort('Timeout');
+      controller.abort(phase === 'upstream' ? 'Timeout' : 'QueueTimeout');
     }, timeoutMs);
     const onAbort = () => {
       controller.abort('Cancelled');
@@ -242,13 +274,21 @@ export const createHttpClient = (opts: HttpOptions) => {
     try {
       // Retries release the queue slot before waiting; unrelated calls can run.
       for (let attempt = 0; ; attempt++) {
+        phase = 'queue';
         const response = await abortable(
-          queue.add(() => attemptGet(url, controller.signal, attempt), {
-            signal: controller.signal,
-          }),
+          queue.add(
+            () =>
+              attemptGet(url, controller.signal, attempt, () => {
+                phase = 'upstream';
+              }),
+            {
+              signal: controller.signal,
+            },
+          ),
           controller.signal,
         );
         if (response === undefined) throw new Error('HTTP queue did not return a result');
+        phase = 'queue';
         result = response.result;
         if (response.retryAfter === undefined || attempt >= maxRetries) break;
         const retryAfter = response.retryAfter;
@@ -257,7 +297,7 @@ export const createHttpClient = (opts: HttpOptions) => {
       }
     } catch (cause: unknown) {
       const reason: TransportFailureReason = controller.signal.aborted
-        ? (controller.signal.reason as 'Timeout' | 'Closed' | 'Cancelled')
+        ? (controller.signal.reason as 'Timeout' | 'QueueTimeout' | 'Closed' | 'Cancelled')
         : 'Network';
       result = err(
         transportFailed(url, reason, cause instanceof Error ? cause.message : String(cause)),
@@ -271,6 +311,12 @@ export const createHttpClient = (opts: HttpOptions) => {
     else {
       counters.failures++;
       if (result.error.kind === 'RateLimited') counters.rate_limited++;
+      if (result.error.kind === 'TransportFailed') {
+        if (result.error.reason === 'QueueTimeout') counters.queue_timeouts++;
+        if (result.error.reason === 'Timeout') counters.upstream_timeouts++;
+        if (result.error.reason === 'Cancelled') counters.cancelled++;
+        if (result.error.reason === 'QueueFull') counters.rejected_full++;
+      }
     }
     return result;
   };

@@ -1,3 +1,4 @@
+import type { DemoOutput } from '../host-data/contracts.js';
 import { currentUtcDate } from '../lib/validation.js';
 import type { HostInsightsOutputT } from '../tools/host-insights/schema.js';
 
@@ -7,7 +8,7 @@ export const HOST_INSIGHTS_PITCH = 'Surfaces revenue gaps and concrete pricing a
 
 const PROFILES: Record<
   Profile,
-  Omit<HostInsightsOutputT, '_mock' | '_pitch' | 'reference_date'>
+  Omit<HostInsightsOutputT, '_mock' | '_pitch' | 'reference_date' | '_source' | 'data_evidence'>
 > = {
   under_performing: {
     occupancy_rate: 0.52,
@@ -79,7 +80,7 @@ export const PROFILE_ORDER: Profile[] = ['under_performing', 'at_market', 'over_
 export const fixtureFor = (
   profile: Profile,
   referenceDate = currentUtcDate(),
-): HostInsightsOutputT => {
+): DemoOutput<HostInsightsOutputT> => {
   const addDays = (days: number): string =>
     new Date(Date.parse(`${referenceDate}T00:00:00Z`) + days * 86400000).toISOString().slice(0, 10);
   return {

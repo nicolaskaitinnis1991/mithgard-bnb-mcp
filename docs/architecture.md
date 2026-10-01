@@ -1,32 +1,32 @@
 # Architecture
 
-The server runs on Node 24 and connects a standard MCP client over stdio. Logs use stderr. The entry point wires dependency-injected HTTP, in-memory caches, parsers, nine workflow tools, a local operations supervisor and an additional status tool.
+Node24 stdio server with dependency-injected HTTP, parsers, in-memory caches, seven supplied-data host engines, a deterministic workflow orchestrator and a local operations supervisor. Eleven tools are advertised. Logs use stderr.
 
 ```mermaid
 flowchart TD
-  Client[MCP client] --> Server[Initialization and tool dispatch]
-  Server --> Registry[Zod input and output validation]
-  Registry --> Agent[Local operations supervisor]
-  Agent --> Public[Two public data tools]
-  Agent --> Demos[Seven synthetic workflow tools]
-  Public --> Cache[Date and currency scoped cache]
-  Cache --> HTTP[Bounded cancellable HTTP client]
-  HTTP --> Parser[Public HTML parser]
-  Server --> Status[operations_status]
+  Client[MCP client / agent] --> Server[Initialize, discover, dispatch]
+  Server --> Registry[Strict Zod input/output and UTF8 budget]
+  Registry --> Flow[Plan / execute / verify, eight steps]
+  Flow --> Agent[Operations supervision]
+  Registry --> Agent
+  Agent --> Public[Two public readers]
+  Agent --> Host[Seven local host engines]
+  Host --> Supplied[Explicit supplied data or marked demo]
+  Public --> Cache[Bounded in-memory caches]
+  Cache --> HTTP[Queued cancellable HTTP]
+  HTTP --> Parser[Public HTML parsing]
+  Server --> Status[Local status / resource observations]
 ```
 
-- [src/index.ts](../src/index.ts): runtime wiring, CLI and shutdown.
-- [src/server.ts](../src/server.ts): tool discovery and MCP dispatch, including cancellation context.
-- [src/tools/registry.ts](../src/tools/registry.ts): generated JSON schemas, input/output validation and error envelopes.
-- [src/lib/http.ts](../src/lib/http.ts): deadlines, bounded queue/body, throttling, Retry-After, cancellation and cleanup.
-- [src/parsers/airbnb-public.ts](../src/parsers/airbnb-public.ts): defensive parsing of modern and legacy public HTML.
-- [src/mocks](../src/mocks): deterministic synthetic workflow fixtures.
-- [src/operations](../src/operations): process-local counters and recovery rules.
+- [Entry point](../src/index.ts): wiring, CLI, idempotent cleanup and stdin EOF handling.
+- [Server](../src/server.ts) and [registry](../src/tools/registry.ts): discovery, request cancellation, contracts, error privacy and256KiB response limit.
+- [Host contracts](../src/host-data/contracts.ts) and [engines](../src/host-data): finite ranges, source/completeness metadata and local calculations.
+- [Workflow](../src/workflows): full preflight, finite dependency order, deadline, four execution slots, output verification and approval propagation.
+- [HTTP](../src/lib/http.ts), [cache](../src/lib/cache.ts) and [parser](../src/parsers/airbnb-public.ts): bounded public reads; unknown facts remain unknown.
+- [Operations](../src/operations): recent public health, counters, resource budgets and circuit epochs.
 
-Valid results are returned as JSON text and structured content. Errors set isError and contain a bounded diagnostic text envelope. Validation failures do not count as an upstream outage. Unknown tools produce an MCP protocol error.
+Host metadata is caller asserted. No provider adapter, database, background write, OTEL exporter or LLM is implemented. Workflow arguments/results exist only during the call; logs retain bounded safe metadata. Generic errors never return guest values. Partial workflow results intentionally retain validated domain outputs for client review.
 
-Public prices preserve their evidence: a stay total is never presented as a nightly rate; missing prices, currency and unavailable numeric facts remain null. Mock workflows include _mock markers, approval requirements and uncertainty where applicable.
+Validation and local queue/quota overload do not establish an upstream outage. Old in-flight success/failure cannot override a newer circuit-recovery epoch. Actual public provider availability remains separate from fixture/host-engine checks.
 
-Telemetry records timing and error kinds. Debug mode stores bounded structural summaries, numeric metadata and explicit safe enums; arbitrary strings and dynamic keys are redacted. The supervisor retains counters and fixed error kinds, without guest content. There is no persistent database or implemented OTEL exporter.
-
-See [operations](operations.md), [integration](integration.md), [limitations](limitations.md) and [the generated index](INDEX.md) for the rest of the system.
+See [integration](integration.md), [operations](operations.md), [limitations](limitations.md), [acceptance](acceptance-plan.md) and [function inventory](FUNCTIONS.md).

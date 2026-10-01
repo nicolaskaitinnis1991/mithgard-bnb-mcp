@@ -1,3 +1,4 @@
+import type { DemoOutput } from '../host-data/contracts.js';
 import type { GuestMessageOutputT } from '../tools/guest-message-assistant/schema.js';
 
 export const GUEST_MESSAGE_PITCH = 'Drafts host-voiced replies with approval gate';
@@ -110,7 +111,7 @@ const RECOMMENDED_INDEX_BY_VOICE: Record<'casual' | 'professional' | 'warm', 0 |
 export const buildGuestMessageOutput = (
   topic: Topic,
   voice: 'casual' | 'professional' | 'warm',
-): GuestMessageOutputT => ({
+): DemoOutput<GuestMessageOutputT> => ({
   suggestions: TEMPLATES[topic],
   missing_context: CONTEXT[topic],
   recommended_index: RECOMMENDED_INDEX_BY_VOICE[voice],

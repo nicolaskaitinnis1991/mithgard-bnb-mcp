@@ -1,7 +1,9 @@
 # Current handoff
 
-Start at [README](../README.md), [INDEX](INDEX.md) and [the October verification report](readiness-2026-10-01.md). Node 24, generated MCP contracts, two public readers, seven synthetic host demos and one local operations status tool are the current scope.
+Start at [README](../README.md), [acceptance plan](acceptance-plan.md), [file index](INDEX.md) and [function/method index](FUNCTIONS.md). Current scope: eleven tools, Node24, generated MCP contracts, two public readers, seven supplied-data host engines with explicit demo mode, a bounded plan/execute/verify orchestrator and process-local operations.
 
-The May build catalog, production gap plan, audits and outreach drafts are historical. Their production-ready claims, old test counts and old host-workflow field examples are not current verification evidence. No marketing message, release or external deployment should be triggered by those drafts.
+Run `npm run acceptance` with Docker running. It produces command logs, real test names, source hashes and open external gates under ignored `reports/`. CI uploads this evidence; release verification runs it before publication. Do not hand-edit a pass result.
 
-Remaining product gates are authenticated provider access, adapter contract verification, target-system integration and human acceptance. The local rule-based agent provides limited containment, not a guarantee of uptime or a self-modifying maintenance system.
+Data source choices are described in [data sources](data-sources.md). No private Airbnb data was inspected. Authenticated import, provider contracts, Base360 integration, real human acceptance and production supervision remain external gates. No release, account write, outreach or deployment follows implicitly from this work.
+
+May documents and the October1 report are historical snapshots. Current-source claims must be checked against the fresh machine report and commit identity.

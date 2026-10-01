@@ -14,7 +14,9 @@ const SENSITIVE_KEYS = new Set([
 ]);
 
 const SAFE_STRING_VALUES: Record<string, ReadonlySet<string>> = {
-  _source: new Set(['public']),
+  _source: new Set(['public', 'provided', 'demo']),
+  source: new Set(['provided', 'demo']),
+  mode: new Set(['provided', 'demo']),
   status: new Set(['ok', 'error']),
   kind: new Set([
     'RateLimited',
@@ -24,6 +26,7 @@ const SAFE_STRING_VALUES: Record<string, ReadonlySet<string>> = {
     'NotImplemented',
     'TransportFailed',
     'OutputValidationFailed',
+    'OutputTooLarge',
     'UnexpectedError',
     'Cancelled',
   ]),
@@ -35,6 +38,7 @@ const SAFE_STRING_VALUES: Record<string, ReadonlySet<string>> = {
     'NotImplemented',
     'TransportFailed',
     'OutputValidationFailed',
+    'OutputTooLarge',
     'UnexpectedError',
     'Cancelled',
   ]),
@@ -151,6 +155,12 @@ const SAFE_KEYS = new Set([
   '_mock',
   '_pitch',
   'error',
+  'host_data',
+  'data_evidence',
+  'as_of',
+  'timezone',
+  'complete',
+  'missing_fields',
   'retry_after_ms',
   'issues',
   'code',
