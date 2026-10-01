@@ -11,6 +11,9 @@ const walk = (dir) => {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     if (ignored.has(entry.name)) continue;
     const path = resolve(dir, entry.name);
+    // npm prepare creates Husky's private hook runtime; it is ignored by Git
+    // and differs from a source archive or an install with scripts disabled.
+    if (relative(root, path) === '.husky/_') continue;
     if (entry.isDirectory()) walk(path);
     else if (entry.isFile()) files.push(relative(root, path));
   }

@@ -69,7 +69,7 @@ Generated with npm run docs:index. This inventory detects changes; it does not e
 | [commitlint.config.js](../commitlint.config.js) | 1 | `c8b731d07ca8dbe9ecbba722a0c9c5eb455771a5885008bb92bceca43f53fd44` |
 | [eslint.config.js](../eslint.config.js) | 28 | `3ad3f26a342cc497e495e0880bcd70d98726fd6353d251ffb905fc0f29a96c8e` |
 | [prettier.config.js](../prettier.config.js) | 8 | `3c195d72a36acf242bbca52e008c3797d898611adfa6fa8ed84937b7257a8bd6` |
-| [scripts/index-repository.mjs](../scripts/index-repository.mjs) | 59 | `524678280fc0b9ba982c5d8796a31effca4f0e250aec9b8f1a685acae066c7af` |
+| [scripts/index-repository.mjs](../scripts/index-repository.mjs) | 62 | `5b4b0abca8273054bd33978bccd7f959f359f8418b917870eeb41c07d41b4d82` |
 | [scripts/smoke.mjs](../scripts/smoke.mjs) | 57 | `b93621766e2a1910bf0f99fcaba936a7964a5df6d63e23e401a4ca52c041a98a` |
 | [scripts/smoke.sh](../scripts/smoke.sh) | 4 | `51d1911b358859f033a4f6c67f29dca09ffd1fe55e8af825a7b2d583238addab` |
 | [src/config/env.ts](../src/config/env.ts) | 25 | `6ce2fb2f1f9d217ffd0ba0c09b36d35c40771006951a2098497e12b2e3c0a3f3` |
