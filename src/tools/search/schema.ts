@@ -23,7 +23,7 @@ export const SearchOutput = z.object({
     z.object({
       id: z.string(),
       title: z.string(),
-      url: z.string().url(),
+      url: z.url(),
       price_per_night: z.number(),
       currency: z.string(),
       location: z.string(),

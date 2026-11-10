@@ -1,15 +1,15 @@
-import type { ZodSchema } from 'zod';
+import type { ZodType } from 'zod';
 
 export interface ToolDefinition {
   name: string;
   description: string;
   inputSchema: Record<string, unknown>; // JSON-Schema for MCP
-  schema: ZodSchema; // Zod runtime check
+  schema: ZodType; // Zod runtime check
   handler: (input: unknown) => Promise<{ content: { type: 'text'; text: string }[] }>;
 }
 
 export const wrapHandler =
-  <T>(schema: ZodSchema<T>, fn: (input: T) => Promise<unknown>) =>
+  <T>(schema: ZodType<T>, fn: (input: T) => Promise<unknown>) =>
   async (raw: unknown) => {
     const parsed = schema.safeParse(raw);
     if (!parsed.success) {

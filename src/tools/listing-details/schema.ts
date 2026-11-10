@@ -12,7 +12,7 @@ export type ListingDetailsInputT = z.infer<typeof ListingDetailsInput>;
 export const ListingFullSchema = z.object({
   id: z.string(),
   title: z.string(),
-  url: z.string().url(),
+  url: z.url(),
   price_per_night: z.number(),
   currency: z.string(),
   rating: z.number().optional(),
