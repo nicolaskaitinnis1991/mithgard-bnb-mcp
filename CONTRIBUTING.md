@@ -17,8 +17,8 @@ The goal: be the reference implementation Airbnb (or any partner) can drop a rea
 ## Development setup
 
 **Prerequisites:**
-- Node.js **20 or newer** (`node --version`)
-- npm 10+ (ships with Node 20)
+- Node.js **22.12 or newer** (`node --version`)
+- npm 10+ (ships with Node 22)
 - Git
 
 **Clone and install:**
