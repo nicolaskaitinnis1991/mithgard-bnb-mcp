@@ -7,7 +7,7 @@
 
 ## Prerequisites
 
-- **Node 22.12+** (current LTS). Check with `node --version`.
+- **Node 22.12+** (LTS). Check with `node --version`.
 - **An MCP-capable client** — any client that speaks the Model Context
   Protocol over stdio. Tested with:
   - [Claude Desktop](https://claude.ai/download)
