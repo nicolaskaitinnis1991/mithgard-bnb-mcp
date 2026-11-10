@@ -1,5 +1,5 @@
 import type { Logger } from 'pino';
-import { ReviewResponderInput, type ReviewResponderInputT } from './schema.js';
+import { ReviewResponderInput } from './schema.js';
 import { reviewResponderHandler } from './handler.js';
 import { wrapHandler, type ToolDefinition } from '../registry.js';
 import { withTelemetry } from '../../lib/telemetry.js';
@@ -21,11 +21,6 @@ export const buildReviewResponderTool = (log: Logger, debug = false): ToolDefini
   schema: ReviewResponderInput,
   handler: wrapHandler(
     ReviewResponderInput,
-    withTelemetry(
-      log,
-      'review_responder',
-      (input) => reviewResponderHandler(input as ReviewResponderInputT),
-      { debug },
-    ),
+    withTelemetry(log, 'review_responder', (input) => reviewResponderHandler(input), { debug }),
   ),
 });

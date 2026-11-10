@@ -1,5 +1,5 @@
 import type { Logger } from 'pino';
-import { HostInsightsInput, type HostInsightsInputT } from './schema.js';
+import { HostInsightsInput } from './schema.js';
 import { hostInsightsHandler } from './handler.js';
 import { wrapHandler, type ToolDefinition } from '../registry.js';
 import { withTelemetry } from '../../lib/telemetry.js';
@@ -22,11 +22,6 @@ export const buildHostInsightsTool = (log: Logger, debug = false): ToolDefinitio
   schema: HostInsightsInput,
   handler: wrapHandler(
     HostInsightsInput,
-    withTelemetry(
-      log,
-      'host_insights',
-      (input) => hostInsightsHandler(input as HostInsightsInputT),
-      { debug },
-    ),
+    withTelemetry(log, 'host_insights', (input) => hostInsightsHandler(input), { debug }),
   ),
 });

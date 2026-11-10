@@ -1,5 +1,5 @@
 import type { Logger } from 'pino';
-import { GuestMessageInput, type GuestMessageInputT } from './schema.js';
+import { GuestMessageInput } from './schema.js';
 import { guestMessageHandler } from './handler.js';
 import { wrapHandler, type ToolDefinition } from '../registry.js';
 import { withTelemetry } from '../../lib/telemetry.js';
@@ -20,11 +20,6 @@ export const buildGuestMessageAssistantTool = (log: Logger, debug = false): Tool
   schema: GuestMessageInput,
   handler: wrapHandler(
     GuestMessageInput,
-    withTelemetry(
-      log,
-      'guest_message_assistant',
-      (input) => guestMessageHandler(input as GuestMessageInputT),
-      { debug },
-    ),
+    withTelemetry(log, 'guest_message_assistant', (input) => guestMessageHandler(input), { debug }),
   ),
 });

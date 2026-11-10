@@ -1,5 +1,5 @@
 import type { Logger } from 'pino';
-import { SearchInput, type SearchInputT } from './schema.js';
+import { SearchInput } from './schema.js';
 import { searchHandler, type SearchDeps } from './handler.js';
 import { wrapHandler, type ToolDefinition } from '../registry.js';
 import { isOk } from '../../lib/result.js';
@@ -22,7 +22,7 @@ export const buildSearchTool = (deps: SearchDeps, log: Logger, debug = false): T
       log,
       'airbnb_search',
       async (input) => {
-        const r = await searchHandler(deps)(input as SearchInputT);
+        const r = await searchHandler(deps)(input);
         if (isOk(r)) return r.value;
         return { error: formatError(r.error), kind: r.error.kind };
       },

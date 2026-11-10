@@ -1,5 +1,5 @@
 import type { Logger } from 'pino';
-import { CalendarOptimizerInput, type CalendarOptimizerInputT } from './schema.js';
+import { CalendarOptimizerInput } from './schema.js';
 import { calendarOptimizerHandler } from './handler.js';
 import { wrapHandler, type ToolDefinition } from '../registry.js';
 import { withTelemetry } from '../../lib/telemetry.js';
@@ -19,11 +19,6 @@ export const buildCalendarOptimizerTool = (log: Logger, debug = false): ToolDefi
   schema: CalendarOptimizerInput,
   handler: wrapHandler(
     CalendarOptimizerInput,
-    withTelemetry(
-      log,
-      'calendar_optimizer',
-      (input) => calendarOptimizerHandler(input as CalendarOptimizerInputT),
-      { debug },
-    ),
+    withTelemetry(log, 'calendar_optimizer', (input) => calendarOptimizerHandler(input), { debug }),
   ),
 });
