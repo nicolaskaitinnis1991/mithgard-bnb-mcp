@@ -106,7 +106,7 @@ the user explicitly sets it. If unset (the default), no OTEL data leaves the pro
 - **CodeQL** is configured in `.github/workflows/codeql.yml`. It runs on every push to `main` and
   on a weekly schedule. It will flip from "internal-only" to "public" the moment the repo goes
   public, which is the v0.1.0-alpha.1 cutover plan.
-- **Distroless Docker base** (`gcr.io/distroless/nodejs20-debian12`) — no shell, no apt, no
+- **Distroless Docker base** (`gcr.io/distroless/nodejs22-debian12`) — no shell, no apt, no
   package manager in the production image. Minimal CVE surface.
 - **All dependencies locked** via `package-lock.json` committed to the repo; CI runs `npm ci`
   (no `npm install`), so the lockfile is the source of truth.

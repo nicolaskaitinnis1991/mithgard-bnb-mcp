@@ -71,7 +71,7 @@ Jedes Tool hat einen eigenen Ordner unter `src/tools/<name>/` mit: `tool.ts`, `s
 
 ## 7. Tech-Stack (nicht verhandelbar)
 
-- **Sprache:** TypeScript (strict, ES2022, Node 20+)
+- **Sprache:** TypeScript (strict, ES2022, Node 22.12+)
 - **MCP-SDK:** `@modelcontextprotocol/sdk` (offiziell)
 - **Validierung:** `zod` für jeden Tool-Input und -Output
 - **HTTP:** `undici` + `p-queue` (Rate-Limit) + `lru-cache`

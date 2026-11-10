@@ -25,7 +25,7 @@ error, and telemetry pipeline.
                                │  JSON-RPC over stdio
                                ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                  Mithgard BnB MCP Server (Node 20+)             │
+│                Mithgard BnB MCP Server (Node 22.12+)            │
 │  ┌───────────────────────────────────────────────────────────┐  │
 │  │  src/index.ts  — CLI parsing, deps wiring, transport      │  │
 │  └─────────────────────────────┬─────────────────────────────┘  │

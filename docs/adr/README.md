@@ -15,6 +15,7 @@ Format: [Michael Nygard ADR](https://cognitect.com/blog/2011/11/15/documenting-a
 | [0005](./0005-mock-vs-live-honesty.md)       | Mock tools clearly labelled        | Accepted |
 | [0006](./0006-multi-strategy-parser.md)      | Multi-strategy parser with fallback | Accepted |
 | [0007](./0007-stderr-for-logs.md)            | Stderr for logs, stdout for MCP    | Accepted |
+| [0008](./0008-node-22-12-runtime.md)         | Node.js 22.12 minimum runtime      | Accepted |
 
 ## Adding new ADRs
 

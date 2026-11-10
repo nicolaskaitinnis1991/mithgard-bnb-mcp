@@ -49,7 +49,7 @@ Das Repo ist das **Pitch-Artefakt**: funktionierender Code + designte Oberfläch
 KI-Agent (Claude / Claude Code / Cursor / etc.)
     │  MCP über stdio (Default) oder SSE (optional)
     ▼
-Mithgard BnB MCP Server (Node 20+, TypeScript)
+Mithgard BnB MCP Server (Node 22.12+, TypeScript)
     │
     ├── Tool-Registry (9 Tools)
     │     ├── 2 Live-Tools  → src/parsers/airbnb-public.ts → undici + Cache + Rate-Limit

@@ -2,7 +2,7 @@
 
 > The host-side Airbnb MCP server that doesn't exist yet — open source, audit-ready, written by a host.
 
-[![Node](https://img.shields.io/badge/node-%3E%3D20-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
+[![Node](https://img.shields.io/badge/node-%3E%3D22.12-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 [![Status: pre-alpha](https://img.shields.io/badge/status-pre--alpha-orange.svg)](#status)
 [![Version](https://img.shields.io/badge/version-0.1.0--alpha-orange)](./CHANGELOG.md)
@@ -47,7 +47,7 @@ The schemas, fixtures, and handler shape are real — drop a real API behind the
 
 ## Install & run
 
-**Prerequisites:** Node 20+, an MCP-capable client (e.g. Claude Desktop).
+**Prerequisites:** Node 22.12+, an MCP-capable client (e.g. Claude Desktop).
 
 ```bash
 git clone https://github.com/nicolaskaitinnis1991/mithgard-bnb-mcp
